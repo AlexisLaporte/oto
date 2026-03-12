@@ -5,14 +5,6 @@ from typing import Optional
 
 app = typer.Typer(help="Browser automation tools (LinkedIn, Crunchbase, Indeed, etc.)")
 
-# Mount o-browser generic commands (fetch, screenshot, run)
-try:
-    from o_browser.cli import app as _obrowser_app
-    for cmd_info in _obrowser_app.registered_commands:
-        app.registered_commands.append(cmd_info)
-except ImportError:
-    pass
-
 # LinkedIn subcommands
 linkedin_app = typer.Typer(help="LinkedIn scraping (profile, company, employees, search)")
 

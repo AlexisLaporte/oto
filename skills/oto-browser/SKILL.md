@@ -1,13 +1,45 @@
 ---
 name: oto-browser
-description: Browser automation for LinkedIn, Crunchbase, Pappers, Indeed, G2. Use for scraping profiles, company pages, job searches, reviews.
+description: "Browser automation: free-form browsing (any URL) + LinkedIn, Crunchbase, Pappers, Indeed, G2. Use for scraping ANY website, profiles, company pages, job searches, reviews."
 ---
 
 # Browser Automation (oto browser / oto linkedin)
 
-Prérequis : `oto` installé (pipx), `LINKEDIN_COOKIE` (li_at) pour LinkedIn.
+Prérequis : `oto` installé (pipx), `o-browser` installé (`pip install -e /data/projects/o-browser`), `LINKEDIN_COOKIE` (li_at) pour LinkedIn.
 
 Toutes les commandes browser tournent en headless par défaut. Ajouter `--no-headless` pour debug visuel.
+
+## Mode libre (any URL)
+
+Pour scraper N'IMPORTE QUEL site (Instagram, Twitter, pages web quelconques...), utiliser `BrowserClient` directement en Python :
+
+```python
+from o_browser import BrowserClient
+
+async with BrowserClient(headless=True) as browser:
+    await browser.goto("https://example.com")
+    text = await browser.get_text()          # texte de la page
+    html = await browser.get_html()          # HTML complet
+    await browser.screenshot("/tmp/page.png") # capture d'écran
+
+    # Interactions
+    await browser.click("button.submit")
+    await browser.fill("input[name=search]", "query")
+    await browser.type("input", "text", delay=50)  # frappe réaliste
+    await browser.press("Enter")
+
+    # Scroll (chargement dynamique)
+    await browser.scroll_to_bottom(times=5)
+    await browser.wait_for_content(min_length=500)
+    await browser.wait_for_selector(".results")
+
+    # JavaScript
+    data = await browser.evaluate("document.title")
+```
+
+Options `BrowserClient` : `headless`, `cdp_url` (Chrome existant), `profile` (session persistante), `channel`, `record` (HAR+video), `interactive` (humain navigue), `proxy`.
+
+**Quand utiliser le mode libre** : dès que le site n'est pas couvert par les commandes spécialisées ci-dessous, ou quand on veut naviguer librement sur un site.
 
 ## LinkedIn (oto linkedin)
 

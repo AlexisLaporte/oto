@@ -2,29 +2,19 @@
 
 CLI unifié pour automatiser des tâches, utilisé par des humains et des agents AI via Bash.
 
-## Pourquoi ce projet
-
-On avait un monorepo `otomata` (`/data/projects/otomata/`) devenu bordélique :
-- `tools/otomata-tools/otomata/` imbriqué sur 3 niveaux pour un simple package Python
-- `cli.py` monolithique de 1193 lignes avec toutes les commandes
-- `_legacy/` mort traîné depuis des mois
-- LinkedIn mélangé avec le reste
-- Noms de comptes Google incohérents (`default`, `gmail` qui pointaient sur le même email)
-
-On a tout repris de zéro dans `/data/oto` avec un package propre nommé `oto`.
+Repo : `AlexisLaporte/oto` (historique conservé depuis otomata-tools).
 
 ## Philosophie
 
-- **CLI-first** : tout passe par `oto <commande>`, pas de MCP, pas de serveur pour les outils
+- **CLI-first** : tout passe par `oto <commande>`, pas de MCP, pas de serveur
 - **Pour les agents AI** : output JSON sur stdout, erreurs sur stderr, composable avec pipes
-- **Backends configurables** (à venir) : chaque groupe de commandes pourra être routé vers un CLI externe (ex: `gog` pour Google) au lieu du client Python intégré. Inspiré d'OpenClaw où les "skills" (markdown) enseignent aux agents quelles commandes utiliser et les "tools" sont les CLIs sur la machine
-- **Pas de sur-ingénierie** : pas de plugin registry, pas d'ABC, pas de MCP. Un if/else dans les commandes suffit
+- **Pas de sur-ingénierie** : pas de plugin registry, pas d'ABC, pas de MCP
 
 ## Stack
 
 - Python 3.10+, Typer (CLI), Hatchling (build)
 - Google APIs (auth, drive, docs, sheets, slides, gmail, keep)
-- Patchright/o-browser (browser automation)
+- o-browser `/data/projects/o-browser` (browser automation, Patchright)
 - Requests (HTTP), python-dotenv (secrets)
 
 ## Architecture
@@ -45,22 +35,21 @@ On a tout repris de zéro dans `/data/oto` avec un package propre nommé `oto`.
 │   │   ├── pennylane.py        # comptabilité
 │   │   ├── anthropic.py        # usage, cost, summary
 │   │   ├── company.py          # SIREN lookup multi-source
+│   │   ├── whatsapp.py         # WhatsApp messaging
 │   │   └── skills.py           # Claude Code skills management (enable/disable)
-│   └── tools/                  # 32 modules clients API
+│   └── tools/                  # 30+ modules clients API
 │       ├── google/             # gmail/, drive/, docs/, sheets/, slides/, keep/, credentials.py
 │       ├── sirene/
-│       ├── browser/
+│       ├── browser/            # linkedin, crunchbase, pappers, indeed, g2
+│       ├── whatsapp/
 │       ├── common/
 │       ├── anthropic/
 │       ├── kaspr/, hunter/, lemlist/
 │       ├── pennylane/
 │       └── ... (apollo, attio, folk, figma, groq, etc.)
-├── cloud/                      # PAS ENCORE MIGRÉ — voir issues #8 #9
 ├── skills/                     # Claude Code skills (source de vérité)
-│   └── oto-*/SKILL.md          # 8 skills, symlinked vers ~/.claude/skills/
-├── pyproject.toml              # entry point: oto = "oto.cli:main"
-├── venv/                       # virtualenv local
-└── PLAN.md                     # Plan détaillé de restructuration
+│   └── oto-*/SKILL.md          # 9 skills, symlinked vers ~/.claude/skills/
+└── pyproject.toml              # entry point: oto = "oto.cli:main"
 ```
 
 ## Commandes
@@ -142,39 +131,14 @@ Points clés :
 - Toujours `print(json.dumps(..., indent=2))` pour l'output
 - Erreurs de secrets manquants catchées dans `main()` → message propre sur stderr (pas de traceback)
 
-## Provenance
-
-Migré depuis `/data/projects/otomata/tools/otomata-tools/otomata/` (renommé `_MIGRATED_TO_OTO`).
-- Package renommé de `otomata` à `oto`
-- Tous les imports `from otomata.` → `from oto.`
-- `cli.py` monolithique splitté en 10 fichiers commands/
-- Les clients API dans `tools/` sont copiés tels quels (pas de refactor)
-
-Le monorepo `/data/projects/otomata/` contient encore les composants pas migrés : app, worker, viewer, extension, linkedin.
-
-## Issues GitHub (AlexisLaporte/oto)
-
-| # | Titre | Statut |
-|---|-------|--------|
-| 1 | Migrer les clients API dans oto/tools/ | done |
-| 2 | Split cli.py en commands/ | done |
-| 10 | pyproject.toml + fix imports | done |
-| 8 | Regrouper cloud/ (app, worker, viewer, extension) | todo — migrer depuis /data/projects/otomata/ |
-| 9 | Nettoyer legacy + déplacer linkedin | todo |
-| 11 | Config poste + projet (config.yaml) | later |
-| 7 | Backend CLI externe configurable | later |
-
-## Ce qu'on ne fait PAS
-
-- Pas de refactor des clients API existants (tools/* = tel quel)
-- Pas de plugin registry / ABC / interfaces
-- Pas de MCP
-- Pas de backward compat — on casse, on recommence propre
-- Pas de fallbacks, pas de code legacy
-- Pas de fichiers > 500 lignes
-
 ## Prod
 
 - `otomata.tech` → tuls.me:3013
-- `otomata.tuls.me` → Flask app (cloud/app/, port 5000)
 - Serveur : 51.15.225.121 (ssh alexis)
+
+## Docs
+
+Detailed docs in `docs/`:
+- `installation.md` — setup et dépendances
+- `gmail-oauth-setup.md` — configuration OAuth Gmail multi-comptes
+- `google-service-account-setup.md` — setup service account Google

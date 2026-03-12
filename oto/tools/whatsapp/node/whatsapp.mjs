@@ -86,10 +86,11 @@ function isRealMessage(m) {
 }
 
 function loadStore() {
+  const defaults = { chats: {}, messages: {}, contacts: {} }
   if (existsSync(storeFile)) {
-    try { return JSON.parse(readFileSync(storeFile, 'utf8')) } catch {}
+    try { return { ...defaults, ...JSON.parse(readFileSync(storeFile, 'utf8')) } } catch {}
   }
-  return { chats: {}, messages: {}, contacts: {} }
+  return defaults
 }
 
 function saveStore(store) {
@@ -98,40 +99,48 @@ function saveStore(store) {
 
 function bindStore(sock, store) {
   sock.ev.on('messaging-history.set', ({ chats, messages }) => {
-    for (const c of (chats || [])) {
-      store.chats[c.id] = { ...store.chats[c.id], ...c }
-    }
-    for (const m of (messages || [])) {
-      const jid = m.key?.remoteJid
-      if (!jid || !isRealMessage(m)) continue
-      if (!store.messages[jid]) store.messages[jid] = []
-      if (!store.messages[jid].some(x => x.key?.id === m.key.id)) {
-        store.messages[jid].push(m)
+    try {
+      for (const c of (chats || [])) {
+        store.chats[c.id] = { ...store.chats[c.id], ...c }
       }
-    }
+      for (const m of (messages || [])) {
+        const jid = m.key?.remoteJid
+        if (!jid || !isRealMessage(m)) continue
+        if (!store.messages[jid]) store.messages[jid] = []
+        if (!store.messages[jid].some(x => x.key?.id === m.key.id)) {
+          store.messages[jid].push(m)
+        }
+      }
+    } catch {}
   })
   sock.ev.on('chats.upsert', (chats) => {
-    for (const c of chats) store.chats[c.id] = { ...store.chats[c.id], ...c }
+    try {
+      for (const c of chats) store.chats[c.id] = { ...store.chats[c.id], ...c }
+    } catch {}
   })
   sock.ev.on('chats.update', (updates) => {
-    for (const u of updates) {
-      if (store.chats[u.id]) Object.assign(store.chats[u.id], u)
-    }
+    try {
+      for (const u of updates) {
+        if (store.chats[u.id]) Object.assign(store.chats[u.id], u)
+        else store.chats[u.id] = u
+      }
+    } catch {}
   })
   sock.ev.on('messages.upsert', ({ messages: msgs }) => {
-    for (const m of msgs) {
-      const jid = m.key?.remoteJid
-      if (!jid || !isRealMessage(m)) continue
-      if (!store.messages[jid]) store.messages[jid] = []
-      if (!store.messages[jid].some(x => x.key?.id === m.key.id)) {
-        store.messages[jid].push(m)
+    try {
+      for (const m of msgs) {
+        const jid = m.key?.remoteJid
+        if (!jid || !isRealMessage(m)) continue
+        if (!store.messages[jid]) store.messages[jid] = []
+        if (!store.messages[jid].some(x => x.key?.id === m.key.id)) {
+          store.messages[jid].push(m)
+        }
+        if (m.pushName) {
+          const contactJid = m.key.participant || m.key.remoteJid
+          store.contacts[contactJid] = m.pushName
+        }
       }
-      // Save pushName as contact name
-      if (m.pushName) {
-        const contactJid = m.key.participant || m.key.remoteJid
-        store.contacts[contactJid] = m.pushName
-      }
-    }
+    } catch {}
   })
 }
 
@@ -292,6 +301,7 @@ async function main() {
     }
   } catch (err) {
     const msg = err.message || String(err)
+    process.stderr.write(err.stack + '\n')
     if (msg === 'not_authenticated' || msg === 'logged_out') {
       output({ error: msg, message: 'Run: oto whatsapp auth' }, 1)
     } else {
