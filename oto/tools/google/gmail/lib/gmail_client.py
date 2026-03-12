@@ -127,6 +127,14 @@ class GmailClient:
 
         return downloaded
 
+    def get_signature(self) -> str:
+        """Get the primary Gmail signature (HTML)."""
+        result = self.service.users().settings().sendAs().list(userId='me').execute()
+        for alias in result.get('sendAs', []):
+            if alias.get('isPrimary'):
+                return alias.get('signature', '')
+        return ''
+
     def send(
         self,
         to: str,
@@ -202,14 +210,64 @@ class GmailClient:
         cc: Optional[str] = None,
         bcc: Optional[str] = None,
         attachments: Optional[list[str]] = None,
+        thread_id: Optional[str] = None,
+        in_reply_to: Optional[str] = None,
     ) -> dict:
-        """Create a draft email. Same args as send()."""
+        """Create a draft email. Pass thread_id + in_reply_to for threaded replies."""
         message = self._build_message(to, subject, body, html, cc, bcc, attachments)
+        if in_reply_to:
+            message['In-Reply-To'] = in_reply_to
+            message['References'] = in_reply_to
         raw = base64.urlsafe_b64encode(message.as_bytes()).decode()
+        msg_body: dict = {'raw': raw}
+        if thread_id:
+            msg_body['threadId'] = thread_id
         draft = self.service.users().drafts().create(
-            userId='me', body={'message': {'raw': raw}},
+            userId='me', body={'message': msg_body},
         ).execute()
         return {'id': draft['id'], 'message_id': draft['message']['id']}
+
+    def create_draft_reply(
+        self,
+        message_id: str,
+        body: str,
+        html: Optional[str] = None,
+        cc: Optional[str] = None,
+        attachments: Optional[list[str]] = None,
+    ) -> dict:
+        """Create a draft reply to a message. Preserves thread, subject, and headers."""
+        original = self.service.users().messages().get(
+            userId='me', id=message_id, format='full',
+        ).execute()
+        headers = {h['name']: h['value'] for h in original['payload']['headers']}
+        thread_id = original['threadId']
+
+        from_addr = headers.get('From', '')
+        to_addr = headers.get('To', '')
+        reply_to_header = headers.get('Reply-To', '')
+        profile = self.service.users().getProfile(userId='me').execute()
+        my_email = profile['emailAddress']
+
+        if reply_to_header:
+            reply_to = parseaddr(reply_to_header)[1]
+        elif my_email.lower() in from_addr.lower():
+            reply_to = parseaddr(to_addr)[1]
+        else:
+            reply_to = parseaddr(from_addr)[1]
+
+        if not reply_to:
+            raise GmailClientError(f"Cannot determine reply recipient (from={from_addr!r}, to={to_addr!r})")
+
+        subject = headers.get('Subject', '')
+        if not subject.lower().startswith('re:'):
+            subject = f"Re: {subject}"
+
+        orig_msg_id = headers.get('Message-ID', '')
+        return self.create_draft(
+            to=reply_to, subject=subject, body=body, html=html,
+            cc=cc, attachments=attachments,
+            thread_id=thread_id, in_reply_to=orig_msg_id or None,
+        )
 
     def _build_message(self, to, subject, body, html=None, cc=None, bcc=None, attachments=None):
         """Build a MIME message."""

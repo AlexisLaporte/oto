@@ -6,6 +6,16 @@ from typing import Optional
 app = typer.Typer(help="Google Workspace tools (Drive, Docs, Sheets, Slides, Gmail, Calendar)")
 
 
+def _apply_signature(client, body: str, html: Optional[str]) -> Optional[str]:
+    """Convert plain text body to HTML with Gmail signature appended."""
+    import html as html_mod
+    signature = client.get_signature()
+    if not signature:
+        return html
+    body_html = html or '<div dir="ltr">' + html_mod.escape(body).replace('\n', '<br>') + '</div>'
+    return body_html + '<br>--<br>' + signature
+
+
 @app.command("drive-list")
 def drive_list(
     folder_id: Optional[str] = typer.Option(None, help="Filter by parent folder ID"),
@@ -237,20 +247,29 @@ def gmail_attachments(
 
 @app.command("gmail-draft")
 def gmail_draft(
-    to: str = typer.Option(..., help="Recipient email"),
-    subject: str = typer.Option(..., help="Email subject"),
+    to: Optional[str] = typer.Option(None, help="Recipient email (auto-detected with --reply-to)"),
+    subject: Optional[str] = typer.Option(None, help="Email subject (auto-detected with --reply-to)"),
     body: str = typer.Option(..., help="Email body (plain text)"),
+    html: Optional[str] = typer.Option(None, help="Email body (HTML). If provided, sent as multipart alternative with plain text."),
     cc: Optional[str] = typer.Option(None, help="CC recipients"),
     bcc: Optional[str] = typer.Option(None, help="BCC recipients"),
+    reply_to: Optional[str] = typer.Option(None, "--reply-to", "-r", help="Message ID to reply to (threads the draft)"),
     attach: Optional[list[str]] = typer.Option(None, "--attach", "-f", help="File paths to attach"),
+    sign: bool = typer.Option(True, "--sign/--no-sign", help="Append Gmail signature"),
     account: Optional[str] = typer.Option(None, "--account", "-a", help="Google account name"),
 ):
-    """Create a draft email in Gmail."""
+    """Create a draft email in Gmail. Use --reply-to for threaded replies."""
     from oto.tools.google.gmail.lib.gmail_client import GmailClient
     import json
 
     client = GmailClient(account=account)
-    result = client.create_draft(to=to, subject=subject, body=body, cc=cc, bcc=bcc, attachments=attach)
+    final_html = _apply_signature(client, body, html) if sign else html
+    if reply_to:
+        result = client.create_draft_reply(message_id=reply_to, body=body, html=final_html, cc=cc, attachments=attach)
+    else:
+        if not to or not subject:
+            raise typer.BadParameter("--to and --subject are required (unless using --reply-to)")
+        result = client.create_draft(to=to, subject=subject, body=body, html=final_html, cc=cc, bcc=bcc, attachments=attach)
     print(json.dumps(result, indent=2))
 
 
@@ -258,8 +277,10 @@ def gmail_draft(
 def gmail_reply(
     message_id: str = typer.Argument(..., help="Gmail message ID to reply to"),
     body: str = typer.Option(..., help="Reply body (plain text)"),
+    html: Optional[str] = typer.Option(None, help="Reply body (HTML)"),
     cc: Optional[str] = typer.Option(None, help="CC recipients"),
     attach: Optional[list[str]] = typer.Option(None, "--attach", "-f", help="File paths to attach"),
+    sign: bool = typer.Option(True, "--sign/--no-sign", help="Append Gmail signature"),
     account: Optional[str] = typer.Option(None, "--account", "-a", help="Google account name"),
 ):
     """Reply to a Gmail message (preserves thread)."""
@@ -267,7 +288,8 @@ def gmail_reply(
     import json
 
     client = GmailClient(account=account)
-    result = client.reply(message_id=message_id, body=body, cc=cc, attachments=attach)
+    final_html = _apply_signature(client, body, html) if sign else html
+    result = client.reply(message_id=message_id, body=body, html=final_html, cc=cc, attachments=attach)
     print(json.dumps(result, indent=2))
 
 
@@ -276,9 +298,11 @@ def gmail_send(
     to: str = typer.Option(..., help="Recipient email"),
     subject: str = typer.Option(..., help="Email subject"),
     body: str = typer.Option(..., help="Email body (plain text)"),
+    html: Optional[str] = typer.Option(None, help="Email body (HTML)"),
     cc: Optional[str] = typer.Option(None, help="CC recipients"),
     bcc: Optional[str] = typer.Option(None, help="BCC recipients"),
     attach: Optional[list[str]] = typer.Option(None, "--attach", "-f", help="File paths to attach"),
+    sign: bool = typer.Option(True, "--sign/--no-sign", help="Append Gmail signature"),
     account: Optional[str] = typer.Option(None, "--account", "-a", help="Google account name"),
 ):
     """Send an email via Gmail."""
@@ -286,7 +310,8 @@ def gmail_send(
     import json
 
     client = GmailClient(account=account)
-    result = client.send(to=to, subject=subject, body=body, cc=cc, bcc=bcc, attachments=attach)
+    final_html = _apply_signature(client, body, html) if sign else html
+    result = client.send(to=to, subject=subject, body=body, html=final_html, cc=cc, bcc=bcc, attachments=attach)
     print(json.dumps(result, indent=2))
 
 
