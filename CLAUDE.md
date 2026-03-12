@@ -2,7 +2,7 @@
 
 CLI unifié pour automatiser des tâches, utilisé par des humains et des agents AI via Bash.
 
-Repo : `AlexisLaporte/oto` (historique conservé depuis otomata-tools).
+Repo : `AlexisLaporte/oto`.
 
 ## Philosophie
 
@@ -21,12 +21,11 @@ Repo : `AlexisLaporte/oto` (historique conservé depuis otomata-tools).
 
 ```
 /data/oto/
-├── oto/                        # Package Python
-│   ├── __init__.py             # v0.1.0
+├── oto/
 │   ├── cli.py                  # Assembleur Typer + main() error handler
-│   ├── config.py               # Secrets 3-tier
-│   ├── commands/               # 1 fichier par domaine
-│   │   ├── google.py           # drive, docs, sheets, slides, gmail, auth
+│   ├── config.py               # Secrets 3-tier (.otomata/secrets.env)
+│   ├── commands/               # 1 fichier = 1 sous-commande Typer
+│   │   ├── google.py           # drive, docs, sheets, slides, gmail, calendar, auth
 │   │   ├── notion.py           # search, page, database
 │   │   ├── browser.py          # linkedin, crunchbase, pappers, indeed, g2
 │   │   ├── sirene.py           # SIRENE API (search, get, stock)
@@ -36,19 +35,24 @@ Repo : `AlexisLaporte/oto` (historique conservé depuis otomata-tools).
 │   │   ├── anthropic.py        # usage, cost, summary
 │   │   ├── company.py          # SIREN lookup multi-source
 │   │   ├── whatsapp.py         # WhatsApp messaging
-│   │   └── skills.py           # Claude Code skills management (enable/disable)
-│   └── tools/                  # 30+ modules clients API
-│       ├── google/             # gmail/, drive/, docs/, sheets/, slides/, keep/, credentials.py
-│       ├── sirene/
+│   │   └── skills.py           # Claude Code skills (enable/disable)
+│   └── tools/                  # Clients API (33 modules)
+│       ├── google/             # gmail, drive, docs, sheets, slides, calendar, keep, credentials
+│       ├── notion/             # pages, databases, search, markdown converter
 │       ├── browser/            # linkedin, crunchbase, pappers, indeed, g2
-│       ├── whatsapp/
-│       ├── common/
-│       ├── anthropic/
-│       ├── kaspr/, hunter/, lemlist/
-│       ├── pennylane/
-│       └── ... (apollo, attio, folk, figma, groq, etc.)
-├── skills/                     # Claude Code skills (source de vérité)
-│   └── oto-*/SKILL.md          # 9 skills, symlinked vers ~/.claude/skills/
+│       ├── whatsapp/           # Node.js bridge (whatsapp-web.js)
+│       ├── sirene/             # INSEE SIRENE API
+│       ├── serper/             # Google search (web, news)
+│       ├── anthropic/          # Admin API (usage, costs)
+│       ├── pennylane/          # Comptabilité
+│       ├── kaspr/, hunter/, lemlist/  # Enrichment & outreach
+│       ├── gemini/, groq/, mistral/   # LLM providers
+│       ├── slack/, resend/     # Messaging
+│       ├── apollo/, attio/, folk/     # CRM
+│       ├── figma/, unsplash/   # Design
+│       └── clearbit/, hithorizons/, zerobounce/, phantombuster/, wttj/, naf/
+├── skills/                     # Claude Code skills (9)
+│   └── oto-*/SKILL.md          # symlinked vers ~/.claude/skills/
 └── pyproject.toml              # entry point: oto = "oto.cli:main"
 ```
 
