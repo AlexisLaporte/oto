@@ -131,6 +131,29 @@ Points clés :
 - Toujours `print(json.dumps(..., indent=2))` pour l'output
 - Erreurs de secrets manquants catchées dans `main()` → message propre sur stderr (pas de traceback)
 
+## Skills Claude Code
+
+Skills = fichiers SKILL.md dans `skills/oto-*/`, à activer via symlinks vers `~/.claude/skills/`.
+
+```bash
+oto skills list                    # voir statut
+oto skills enable --all            # tout activer
+oto skills enable oto-google       # activer un seul
+oto skills disable oto-pennylane   # désactiver
+```
+
+| Skill | Description |
+|-------|-------------|
+| `oto-anthropic` | Anthropic API usage and cost tracking |
+| `oto-browser` | Browser automation: free-form browsing + LinkedIn, Crunchbase, Pappers, Indeed, G2 |
+| `oto-enrichment` | Contact enrichment with Kaspr, Hunter, Lemlist |
+| `oto-google` | Gmail, Google Drive, Google Docs |
+| `oto-notion` | Notion workspace: search, pages, databases |
+| `oto-pennylane` | Pennylane accounting API |
+| `oto-search` | Web and news search via Serper (Google) |
+| `oto-sirene` | SIRENE INSEE, données entreprises françaises |
+| `oto-whatsapp` | WhatsApp messaging |
+
 ## Prod
 
 - `otomata.tech` → tuls.me:3013
