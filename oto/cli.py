@@ -8,8 +8,9 @@ app = typer.Typer(
     no_args_is_help=True,
 )
 
-from oto.commands import google, notion, browser, sirene, search, enrichment, pennylane, anthropic, company, skills, whatsapp
+from oto.commands import google, notion, browser, sirene, search, enrichment, pennylane, anthropic, company, skills, whatsapp, folk, audio
 
+app.add_typer(audio.app, name="audio")
 app.add_typer(google.app, name="google")
 app.add_typer(notion.app, name="notion")
 app.add_typer(browser.app, name="browser")
@@ -22,6 +23,7 @@ app.add_typer(anthropic.app, name="anthropic")
 app.add_typer(company.app, name="company")
 app.add_typer(skills.app, name="skills")
 app.add_typer(whatsapp.app, name="whatsapp")
+app.add_typer(folk.app, name="folk")
 
 
 @app.command("config")
@@ -51,6 +53,8 @@ def show_config():
         "PENNYLANE_API_KEY",
         "GROQ_API_KEY",
         "ANTHROPIC_ADMIN_API_KEY",
+        "FOLK_API_KEY",
+        "TULS_API_TOKEN",
     ]
     for name in secrets:
         status = "+" if get_secret(name) else "-"
