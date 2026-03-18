@@ -1,4 +1,4 @@
-import { makeWASocket, useMultiFileAuthState, DisconnectReason, fetchLatestBaileysVersion } from '@whiskeysockets/baileys'
+import { makeWASocket, useMultiFileAuthState, DisconnectReason, fetchLatestBaileysVersion, downloadMediaMessage } from '@whiskeysockets/baileys'
 import { parseArgs } from 'node:util'
 import { mkdirSync, rmSync, existsSync, readFileSync, writeFileSync } from 'node:fs'
 import pino from 'pino'
@@ -20,6 +20,8 @@ const { values: args } = parseArgs({
     to: { type: 'string' },
     message: { type: 'string' },
     chat: { type: 'string' },
+    'message-id': { type: 'string' },
+    output: { type: 'string' },
     limit: { type: 'string', default: '20' },
   },
   strict: false,
@@ -158,7 +160,7 @@ async function connect(showQR) {
       version,
       auth: state,
       logger,
-      syncFullHistory: showQR,
+      syncFullHistory: true,
     })
     sock.ev.on('creds.update', saveCreds)
     bindStore(sock, store)
@@ -194,6 +196,23 @@ async function connect(showQR) {
     process.stderr.write('Reconnecting...\n')
   }
   throw new Error('connection_timeout')
+}
+
+// --- History sync ---
+
+function waitForHistorySync(sock) {
+  return new Promise((resolve) => {
+    const timeout = setTimeout(resolve, 15000)
+    let resolved = false
+    sock.ev.on('messaging-history.set', ({ isLatest }) => {
+      if (isLatest && !resolved) {
+        resolved = true
+        clearTimeout(timeout)
+        // Give a small buffer for any trailing events
+        setTimeout(resolve, 1000)
+      }
+    })
+  })
 }
 
 // --- Commands ---
@@ -245,8 +264,7 @@ async function handleListChats() {
   const limit = parseInt(args.limit) || 20
   const { sock, store } = await connect(false)
 
-  // Wait briefly for chat updates
-  await new Promise(resolve => setTimeout(resolve, 2000))
+  await waitForHistorySync(sock)
   saveStore(store)
 
   const chats = Object.values(store.chats)
@@ -274,8 +292,7 @@ async function handleRead() {
 
   const { sock, store } = await connect(false)
 
-  // Wait briefly for new messages
-  await new Promise(resolve => setTimeout(resolve, 2000))
+  await waitForHistorySync(sock)
   saveStore(store)
 
   const messages = (store.messages[jid] || [])
@@ -288,6 +305,32 @@ async function handleRead() {
   output({ chat: jid, messages: messages.map(formatMessage) })
 }
 
+async function handleDownload() {
+  const chat = args.chat
+  const messageId = args['message-id']
+  const outputPath = args.output
+  if (!chat || !messageId || !outputPath) {
+    output({ error: 'missing_args', message: '--chat, --message-id, and --output required' }, 1)
+  }
+  const jid = normalizeJid(chat)
+  const { sock, store } = await connect(false)
+
+  await waitForHistorySync(sock)
+  saveStore(store)
+
+  const messages = store.messages[jid] || []
+  const msg = messages.find(m => m.key?.id === messageId)
+  if (!msg) {
+    await sock.end()
+    output({ error: 'not_found', message: `Message ${messageId} not found in ${jid}` }, 1)
+  }
+
+  const buffer = await downloadMediaMessage(msg, 'buffer', {}, { logger, reuploadRequest: sock.updateMediaMessage })
+  writeFileSync(outputPath, buffer)
+  await sock.end()
+  output({ status: 'downloaded', path: outputPath, size: buffer.length })
+}
+
 // --- Main ---
 
 async function main() {
@@ -297,6 +340,7 @@ async function main() {
       case 'send': await handleSend(); break
       case 'list-chats': await handleListChats(); break
       case 'read': await handleRead(); break
+      case 'download': await handleDownload(); break
       default: output({ error: 'unknown_command', message: `Unknown command: ${command}` }, 1)
     }
   } catch (err) {

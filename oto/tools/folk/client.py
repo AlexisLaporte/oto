@@ -1,11 +1,8 @@
-"""
-Folk CRM API Client.
-
-Requires: requests
-"""
+"""Folk CRM API Client — https://developer.folk.app/api-reference"""
 
 import time
 from typing import Optional, Dict, Any, List
+from urllib.parse import urlparse, parse_qs
 
 import requests
 
@@ -13,191 +10,194 @@ from ...config import require_secret
 
 
 class FolkClient:
-    """
-    Folk CRM API client for:
-    - People/contacts management
-    - Companies management
-    - Deals management
-    - Notes and groups
-    """
-
     BASE_URL = "https://api.folk.app/v1"
 
     def __init__(self, api_key: str = None):
-        """
-        Initialize Folk client.
-
-        Args:
-            api_key: Folk API key (or set FOLK_API_KEY env var)
-        """
         self.api_key = api_key or require_secret("FOLK_API_KEY")
-        self._workspace_id = None
-        self._api_calls = 0
 
     def _request(self, method: str, endpoint: str, **kwargs) -> Any:
-        """Make API request with retry on rate limit."""
-        url = f"{self.BASE_URL}/{endpoint}"
-        headers = {
-            "Authorization": f"Bearer {self.api_key}",
-            "Content-Type": "application/json",
-        }
-
+        url = f"{self.BASE_URL}/{endpoint}" if not endpoint.startswith("http") else endpoint
+        headers = {"Authorization": f"Bearer {self.api_key}"}
+        if method.upper() != "DELETE":
+            headers["Content-Type"] = "application/json"
         for attempt in range(3):
-            response = requests.request(method, url, headers=headers, **kwargs)
-            self._api_calls += 1
-
-            if response.status_code == 429:
-                time.sleep(2)
+            resp = requests.request(method, url, headers=headers, **kwargs)
+            if resp.status_code == 429:
+                wait = int(resp.headers.get("Retry-After", 2))
+                time.sleep(wait)
                 continue
-
-            response.raise_for_status()
-
-            if response.content:
-                return response.json()
-            return {}
-
+            if resp.status_code >= 400:
+                try:
+                    error_body = resp.json()
+                except Exception:
+                    error_body = resp.text
+                raise Exception(f"HTTP {resp.status_code}: {error_body}")
+            resp.raise_for_status()
+            return resp.json() if resp.content else {}
         raise Exception("Rate limit exceeded after retries")
 
-    def validate_authentication(self) -> bool:
-        """
-        Validate API key and load workspace info.
-
-        Returns:
-            True if valid
-        """
-        try:
-            data = self._request("GET", "me")
-            if data.get("data", {}).get("workspaces"):
-                self._workspace_id = data["data"]["workspaces"][0]["id"]
-            return True
-        except:
-            return False
-
-    def get_paginated_data(self, endpoint: str, params: Dict = None) -> List[Dict]:
-        """
-        Fetch all pages of data.
-
-        Args:
-            endpoint: API endpoint
-            params: Query parameters
-
-        Returns:
-            All items
-        """
+    def _paginate(self, endpoint: str, params: Dict = None) -> List[Dict]:
         params = params or {}
+        params.setdefault("limit", 100)
         all_items = []
-        cursor = None
-
         while True:
-            if cursor:
-                params["cursor"] = cursor
-
             data = self._request("GET", endpoint, params=params)
             items = data.get("data", {}).get("items", [])
             all_items.extend(items)
-
-            pagination = data.get("data", {}).get("pagination", {})
-            if not pagination.get("hasMore"):
+            next_link = data.get("data", {}).get("pagination", {}).get("nextLink")
+            if not next_link:
                 break
-
-            cursor = pagination.get("cursor")
+            # Extract cursor from nextLink
+            parsed = parse_qs(urlparse(next_link).query)
+            cursor = parsed.get("cursor", [None])[0]
             if not cursor:
                 break
-
+            params["cursor"] = cursor
         return all_items
 
-    def fetch_people(self, group_filter: str = None) -> List[Dict[str, Any]]:
-        """
-        Fetch all contacts.
+    # --- Groups ---
 
-        Args:
-            group_filter: Filter by group ID
+    def list_groups(self) -> List[Dict]:
+        return self._paginate("groups")
 
-        Returns:
-            List of people
-        """
+    def get_group_custom_fields(self, group_id: str, entity_type: str = "person") -> List[Dict]:
+        data = self._request("GET", f"groups/{group_id}/custom-fields/{entity_type}")
+        return data.get("data", {}).get("items", [])
+
+    # --- People ---
+
+    def list_people(self, **filters) -> List[Dict]:
         params = {}
-        if group_filter:
-            params["groupId"] = group_filter
+        for key, val in filters.items():
+            params[f"filter[{key}][like]"] = val
+        return self._paginate("people", params)
 
-        return self.get_paginated_data("people", params)
+    def get_person(self, person_id: str) -> Dict:
+        return self._request("GET", f"people/{person_id}").get("data", {})
 
-    def fetch_companies(self) -> List[Dict[str, Any]]:
-        """Fetch all companies."""
-        return self.get_paginated_data("companies")
-
-    def fetch_deals(self) -> List[Dict[str, Any]]:
-        """Fetch all deals."""
-        return self.get_paginated_data("deals")
-
-    def fetch_notes(self) -> List[Dict[str, Any]]:
-        """Fetch all notes."""
-        return self.get_paginated_data("notes")
-
-    def fetch_groups(self) -> List[Dict[str, Any]]:
-        """Fetch all groups."""
-        return self.get_paginated_data("groups")
-
-    def create_person(
-        self,
-        first_name: str,
-        last_name: str = None,
-        email: str = None,
-        phone: str = None,
-        company_id: str = None,
-        **custom_fields,
-    ) -> Dict[str, Any]:
-        """
-        Create a new person.
-
-        Args:
-            first_name: First name
-            last_name: Last name
-            email: Email address
-            phone: Phone number
-            company_id: Link to company
-            **custom_fields: Additional fields
-
-        Returns:
-            Created person
-        """
-        data = {"firstName": first_name}
+    def create_person(self, first_name: str, last_name: str = None,
+                      emails: List[str] = None, phones: List[str] = None,
+                      job_title: str = None, company_name: str = None,
+                      company_id: str = None, group_ids: List[str] = None,
+                      **kwargs) -> Dict:
+        body: Dict[str, Any] = {"firstName": first_name}
         if last_name:
-            data["lastName"] = last_name
-        if email:
-            data["email"] = email
-        if phone:
-            data["phone"] = phone
+            body["lastName"] = last_name
+        if emails:
+            body["emails"] = emails
+        if phones:
+            body["phones"] = phones
+        if job_title:
+            body["jobTitle"] = job_title
+        companies = []
         if company_id:
-            data["companyId"] = company_id
-        data.update(custom_fields)
+            companies.append({"id": company_id})
+        elif company_name:
+            companies.append({"name": company_name})
+        if companies:
+            body["companies"] = companies
+        if group_ids:
+            body["groups"] = [{"id": gid} for gid in group_ids]
+        body.update(kwargs)
+        return self._request("POST", "people", json=body).get("data", {})
 
-        return self._request("POST", "people", json=data)
+    def update_person(self, person_id: str, **fields) -> Dict:
+        return self._request("PATCH", f"people/{person_id}", json=fields).get("data", {})
 
-    def create_company(
-        self,
-        name: str,
-        domain: str = None,
-        **custom_fields,
-    ) -> Dict[str, Any]:
-        """
-        Create a new company.
+    def delete_person(self, person_id: str) -> Dict:
+        return self._request("DELETE", f"people/{person_id}")
 
-        Args:
-            name: Company name
-            domain: Company domain
-            **custom_fields: Additional fields
+    # --- Companies ---
 
-        Returns:
-            Created company
-        """
-        data = {"name": name}
-        if domain:
-            data["domain"] = domain
-        data.update(custom_fields)
+    def list_companies(self, **filters) -> List[Dict]:
+        params = {}
+        for key, val in filters.items():
+            params[f"filter[{key}][like]"] = val
+        return self._paginate("companies", params)
 
-        return self._request("POST", "companies", json=data)
+    def get_company(self, company_id: str) -> Dict:
+        return self._request("GET", f"companies/{company_id}").get("data", {})
 
-    def get_api_calls_count(self) -> int:
-        """Get total API calls made."""
-        return self._api_calls
+    def create_company(self, name: str, emails: List[str] = None,
+                       industry: str = None, **kwargs) -> Dict:
+        body: Dict[str, Any] = {"name": name}
+        if emails:
+            body["emails"] = emails
+        if industry:
+            body["industry"] = industry
+        body.update(kwargs)
+        return self._request("POST", "companies", json=body).get("data", {})
+
+    def update_company(self, company_id: str, **fields) -> Dict:
+        return self._request("PATCH", f"companies/{company_id}", json=fields).get("data", {})
+
+    def delete_company(self, company_id: str) -> Dict:
+        return self._request("DELETE", f"companies/{company_id}")
+
+    # --- Deals (objects in groups) ---
+
+    def list_deals(self, group_id: str, object_type: str = "deals") -> List[Dict]:
+        return self._paginate(f"groups/{group_id}/{object_type}")
+
+    def create_deal(self, group_id: str, name: str, object_type: str = "deals",
+                    people_ids: List[str] = None, company_ids: List[str] = None,
+                    custom_fields: Dict = None) -> Dict:
+        body: Dict[str, Any] = {"name": name}
+        if people_ids:
+            body["people"] = [{"id": pid} for pid in people_ids]
+        if company_ids:
+            body["companies"] = [{"id": cid} for cid in company_ids]
+        if custom_fields:
+            body["customFieldValues"] = custom_fields
+        return self._request("POST", f"groups/{group_id}/{object_type}", json=body).get("data", {})
+
+    def update_deal(self, group_id: str, deal_id: str, object_type: str = "deals",
+                    **fields) -> Dict:
+        return self._request("PATCH", f"groups/{group_id}/{object_type}/{deal_id}", json=fields).get("data", {})
+
+    # --- Notes ---
+
+    def list_notes(self, entity_id: str = None) -> List[Dict]:
+        params = {}
+        if entity_id:
+            params["filter[entity.id][eq]"] = entity_id
+        return self._paginate("notes", params)
+
+    def create_note(self, entity_id: str, content: str, visibility: str = "public") -> Dict:
+        return self._request("POST", "notes", json={
+            "entity": {"id": entity_id},
+            "content": content,
+            "visibility": visibility,
+        }).get("data", {})
+
+    # --- Interactions ---
+
+    def create_interaction(self, entity_id: str, type: str, title: str,
+                           content: str = None, date_time: str = None) -> Dict:
+        body: Dict[str, Any] = {
+            "entity": {"id": entity_id},
+            "type": type,
+            "title": title,
+        }
+        if content:
+            body["content"] = content
+        if date_time:
+            body["dateTime"] = date_time
+        return self._request("POST", "interactions", json=body).get("data", {})
+
+    # --- Reminders ---
+
+    def list_reminders(self, entity_id: str = None) -> List[Dict]:
+        params = {}
+        if entity_id:
+            params["filter[entity.id][eq]"] = entity_id
+        return self._paginate("reminders", params)
+
+    def create_reminder(self, entity_id: str, name: str,
+                        recurrence_rule: str, visibility: str = "public") -> Dict:
+        return self._request("POST", "reminders", json={
+            "entity": {"id": entity_id},
+            "name": name,
+            "recurrenceRule": recurrence_rule,
+            "visibility": visibility,
+        }).get("data", {})

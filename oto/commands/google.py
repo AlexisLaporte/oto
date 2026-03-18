@@ -21,12 +21,13 @@ def drive_list(
     folder_id: Optional[str] = typer.Option(None, help="Filter by parent folder ID"),
     query: Optional[str] = typer.Option(None, help="Custom query filter"),
     limit: int = typer.Option(100, help="Max results"),
+    account: Optional[str] = typer.Option(None, "--account", "-a", help="Google account name"),
 ):
     """List files in Google Drive."""
     from oto.tools.google.drive.lib.drive_client import DriveClient
     import json
 
-    client = DriveClient()
+    client = DriveClient(account=account)
     files = client.list_files(folder_id=folder_id, query=query, page_size=limit)
     print(json.dumps({"count": len(files), "files": files}, indent=2))
 
@@ -35,13 +36,30 @@ def drive_list(
 def drive_download(
     file_id: str = typer.Argument(..., help="Google Drive file ID"),
     output: str = typer.Argument(..., help="Output path"),
+    account: Optional[str] = typer.Option(None, "--account", "-a", help="Google account name"),
 ):
     """Download a file from Google Drive."""
     from oto.tools.google.drive.lib.drive_client import DriveClient
 
-    client = DriveClient()
+    client = DriveClient(account=account)
     result = client.download_file(file_id, output)
     print(f"Downloaded: {result['filename']} -> {result['output_path']}")
+
+
+@app.command("drive-upload")
+def drive_upload(
+    file_path: str = typer.Argument(..., help="Local file path to upload"),
+    folder_id: Optional[str] = typer.Option(None, help="Target folder ID in Drive"),
+    name: Optional[str] = typer.Option(None, help="Custom filename (defaults to local name)"),
+    account: Optional[str] = typer.Option(None, "--account", "-a", help="Google account name"),
+):
+    """Upload a file to Google Drive."""
+    from oto.tools.google.drive.lib.drive_client import DriveClient
+    import json
+
+    client = DriveClient(account=account)
+    result = client.upload_file(local_path=file_path, folder_id=folder_id, file_name=name)
+    print(json.dumps(result, indent=2))
 
 
 @app.command("docs-headings")
@@ -81,11 +99,11 @@ def auth(
     list_accounts: bool = typer.Option(False, "--list", "-l", help="List configured accounts"),
 ):
     """Set up or list Google OAuth accounts."""
-    from oto.tools.google.credentials import list_accounts as _list_accounts, setup_account
+    from oto.tools.google.credentials import list_accounts as _list_accounts, setup_account, DEFAULT_SCOPES as DRIVE_SCOPES
     from oto.tools.google.gmail.lib.gmail_client import SCOPES as GMAIL_SCOPES
     from oto.tools.google.calendar.lib.calendar_client import SCOPES as CALENDAR_SCOPES
 
-    ALL_SCOPES = list(set(GMAIL_SCOPES + CALENDAR_SCOPES))
+    ALL_SCOPES = list(set(GMAIL_SCOPES + CALENDAR_SCOPES + DRIVE_SCOPES))
 
     if list_accounts:
         accounts = _list_accounts()

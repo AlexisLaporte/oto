@@ -9,7 +9,7 @@ from datetime import datetime, timedelta
 from google.oauth2.service_account import Credentials
 from googleapiclient.discovery import build
 
-from oto.tools.google.credentials import get_credentials
+from oto.tools.google.credentials import get_credentials, get_user_credentials, list_accounts
 
 
 class DriveClientError(Exception):
@@ -24,13 +24,14 @@ class DriveClient:
     CACHE_DIR = Path(__file__).parent.parent.parent / '.cache' / 'google-drive'
     CACHE_TTL = 3600  # 1 hour default cache TTL
 
-    def __init__(self, credentials_json: str = None, cache_ttl: int = CACHE_TTL):
+    def __init__(self, credentials_json: str = None, cache_ttl: int = CACHE_TTL, account: str = None):
         """
-        Initialize Drive client with Service Account credentials.
+        Initialize Drive client. Tries OAuth user credentials first, falls back to service account.
 
         Args:
-            credentials_json: Path to Google Service Account JSON file (optional, uses env var if not provided)
+            credentials_json: Path to Google Service Account JSON file (legacy)
             cache_ttl: Cache time-to-live in seconds (default: 1 hour)
+            account: OAuth account name (None = auto-detect)
         """
         self.cache_ttl = cache_ttl
         self._ensure_cache_dir()
@@ -45,8 +46,11 @@ class DriveClient:
                     creds_dict,
                     scopes=self.SCOPES
                 )
+            elif account or list_accounts():
+                # OAuth user credentials (preferred)
+                self.credentials = get_user_credentials(self.SCOPES, account=account)
             else:
-                # New: use centralized credentials loader
+                # Fallback: service account
                 self.credentials = get_credentials(self.SCOPES)
         except json.JSONDecodeError as e:
             raise DriveClientError(f"Invalid credentials JSON: {e}")

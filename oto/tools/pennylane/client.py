@@ -48,6 +48,61 @@ class PennylaneClient:
             "Accept": "application/json",
         })
 
+    def post(self, endpoint: str, data: dict, retries: int = 3) -> dict:
+        """POST data to Pennylane API with retry on rate limit."""
+        url = f"{self.BASE_URL}/{endpoint}"
+
+        for attempt in range(retries):
+            try:
+                response = self.session.post(url, json=data, timeout=30)
+
+                if response.status_code == 429:
+                    wait_time = 2 ** attempt
+                    time.sleep(wait_time)
+                    continue
+
+                if not response.ok:
+                    return {
+                        "error": str(response.status_code),
+                        "details": response.text,
+                        "status_code": response.status_code,
+                    }
+
+                if response.status_code == 204 or not response.content:
+                    return {"ok": True}
+
+                return response.json()
+            except Exception as e:
+                return {"error": str(e)}
+
+        return {"error": "Max retries exceeded"}
+
+    def put(self, endpoint: str, data: dict, retries: int = 3) -> dict:
+        """PUT data to Pennylane API with retry on rate limit."""
+        url = f"{self.BASE_URL}/{endpoint}"
+
+        for attempt in range(retries):
+            try:
+                response = self.session.put(url, json=data, timeout=30)
+
+                if response.status_code == 429:
+                    wait_time = 2 ** attempt
+                    time.sleep(wait_time)
+                    continue
+
+                if not response.ok:
+                    return {
+                        "error": str(response.status_code),
+                        "details": response.text,
+                        "status_code": response.status_code,
+                    }
+
+                return response.json()
+            except Exception as e:
+                return {"error": str(e)}
+
+        return {"error": "Max retries exceeded"}
+
     def fetch(self, endpoint: str, params: Optional[dict] = None, retries: int = 3) -> dict:
         """
         Fetch data from Pennylane API with retry on rate limit.
@@ -93,24 +148,22 @@ class PennylaneClient:
     ) -> list:
         """
         Fetch all pages of a paginated endpoint.
-
-        Args:
-            endpoint: API endpoint
-            params: Optional query parameters
-            max_pages: Maximum number of pages to fetch (None for all)
-            per_page: Items per page (default 100)
-
-        Returns:
-            List of all items across pages
+        Supports both page-based and cursor-based pagination.
         """
         all_data = []
-        page = 1
         if params is None:
             params = {}
         params['per_page'] = per_page
+        page = 1
+        cursor = None
 
         while True:
-            params['page'] = page
+            if cursor:
+                params['cursor'] = cursor
+                params.pop('page', None)
+            else:
+                params['page'] = page
+
             data = self.fetch(endpoint, params)
             time.sleep(self.rate_limit_delay)
 
@@ -120,12 +173,15 @@ class PennylaneClient:
             # Handle different response formats
             if 'items' in data:
                 items = data['items']
+                has_more = data.get('has_more', False)
+                next_cursor = data.get('next_cursor')
                 total_pages = data.get('total_pages', 1)
             elif 'data' in data:
                 items = data['data']
+                has_more = False
+                next_cursor = None
                 total_pages = data.get('pagination', {}).get('total_pages', 1)
             else:
-                # Single page response or unknown format
                 return data if isinstance(data, list) else [data]
 
             if not items:
@@ -133,11 +189,18 @@ class PennylaneClient:
 
             all_data.extend(items)
 
-            if page >= total_pages:
+            # Cursor-based pagination
+            if next_cursor and has_more:
+                cursor = next_cursor
+            elif has_more:
+                page += 1
+            elif page < total_pages:
+                page += 1
+            else:
                 break
-            if max_pages and page >= max_pages:
+
+            if max_pages and page > max_pages:
                 break
-            page += 1
 
         return all_data
 
@@ -185,6 +248,119 @@ class PennylaneClient:
     def get_transactions(self, max_pages: Optional[int] = None) -> list:
         """Get bank transactions."""
         return self.fetch_all_pages("transactions", max_pages=max_pages)
+
+    # --- File Attachments ---
+
+    def upload_file(self, file_path: str) -> dict:
+        """Upload a file (PDF) to Pennylane. Returns dict with id, filename, url."""
+        import os
+        url = f"{self.BASE_URL}/file_attachments"
+        filename = os.path.basename(file_path)
+        with open(file_path, "rb") as f:
+            response = self.session.post(
+                url,
+                files={"file": (filename, f, "application/pdf")},
+                timeout=60,
+            )
+        if not response.ok:
+            return {
+                "error": str(response.status_code),
+                "details": response.text,
+                "status_code": response.status_code,
+            }
+        return response.json()
+
+    # --- Customers ---
+
+    def list_customers(self, max_pages: Optional[int] = None) -> list:
+        """List all customers."""
+        return self.fetch_all_pages("company_customers", max_pages=max_pages)
+
+    def create_customer(self, name: str, emails: list[str] = None,
+                        address: str = None, postal_code: str = None,
+                        city: str = None, country_alpha2: str = "FR",
+                        external_reference: str = None) -> dict:
+        """Create a customer."""
+        body = {"name": name}
+        if emails:
+            body["emails"] = emails
+        if address or postal_code or city:
+            body["billing_address"] = {
+                k: v for k, v in {
+                    "address": address, "postal_code": postal_code,
+                    "city": city, "country_alpha2": country_alpha2,
+                }.items() if v
+            }
+        if external_reference:
+            body["external_reference"] = external_reference
+        return self.post("company_customers", body)
+
+    # --- Products ---
+
+    def list_products(self, max_pages: Optional[int] = None) -> list:
+        """List all products."""
+        return self.fetch_all_pages("products", max_pages=max_pages)
+
+    def create_product(self, label: str, unit_price: str, unit: str = "day",
+                       vat_rate: str = "FR_200", description: str = None) -> dict:
+        """Create a product. unit_price as string (e.g. '700.00')."""
+        body = {
+            "label": label,
+            "price_before_tax": unit_price,
+            "unit": unit,
+            "vat_rate": vat_rate,
+        }
+        if description:
+            body["description"] = description
+        return self.post("products", body)
+
+    # --- Customer Invoices ---
+
+    def create_customer_invoice(self, customer_id: int, date: str, deadline: str,
+                                lines: list[dict], draft: bool = True,
+                                external_reference: str = None,
+                                currency: str = "EUR") -> dict:
+        """
+        Create a customer invoice.
+
+        lines: list of dicts with keys: product_id, quantity, and optionally
+               label, raw_currency_unit_price, unit, vat_rate.
+        """
+        body = {
+            "customer_id": customer_id,
+            "date": date,
+            "deadline": deadline,
+            "draft": draft,
+            "currency": currency,
+            "invoice_lines": lines,
+        }
+        if external_reference:
+            body["external_reference"] = external_reference
+        return self.post("customer_invoices", body)
+
+    def finalize_invoice(self, invoice_id: int) -> dict:
+        """Finalize a draft invoice."""
+        return self.put(f"customer_invoices/{invoice_id}", {"draft": False})
+
+    # --- Quotes ---
+
+    def create_quote(self, customer_id: int, date: str, deadline: str,
+                     lines: list[dict], external_reference: str = None,
+                     currency: str = "EUR", language: str = "fr") -> dict:
+        """Create a quote."""
+        body = {
+            "customer_id": customer_id,
+            "date": date,
+            "deadline": deadline,
+            "currency": currency,
+            "language": language,
+            "invoice_lines": lines,
+        }
+        if external_reference:
+            body["external_reference"] = external_reference
+        return self.post("quotes", body)
+
+    # --- Aggregates ---
 
     def fetch_complete_data(self, year: int = 2025) -> dict:
         """

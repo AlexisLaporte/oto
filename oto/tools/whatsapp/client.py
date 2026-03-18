@@ -36,7 +36,7 @@ class WhatsAppClient:
             if v is not None:
                 cmd.extend([f"--{k.replace('_', '-')}", str(v)])
 
-        timeout = 120 if interactive else 60
+        timeout = 120 if interactive else 120
 
         if interactive:
             # Let stderr flow to terminal (QR code display)
