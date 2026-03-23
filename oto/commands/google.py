@@ -62,15 +62,78 @@ def drive_upload(
     print(json.dumps(result, indent=2))
 
 
+@app.command("drive-move")
+def drive_move(
+    file_id: str = typer.Argument(..., help="Google Drive file ID to move"),
+    folder_id: str = typer.Argument(..., help="Destination folder ID"),
+    account: Optional[str] = typer.Option(None, "--account", "-a", help="Google account name"),
+):
+    """Move a file to a different folder in Google Drive."""
+    from oto.tools.google.drive.lib.drive_client import DriveClient
+    import json
+
+    client = DriveClient(account=account)
+    result = client.move_file(file_id, folder_id)
+    print(json.dumps(result, indent=2))
+
+
+@app.command("docs-create")
+def docs_create(
+    title: str = typer.Argument(..., help="Document title"),
+    file: Optional[str] = typer.Option(None, "--file", "-f", help="Text/markdown file to import as content"),
+    markdown: bool = typer.Option(False, "--markdown", "-m", help="Parse markdown formatting (headings, bold, lists, quotes)"),
+    account: Optional[str] = typer.Option(None, "--account", "-a", help="Google account name"),
+):
+    """Create a new Google Doc, optionally importing content from a file."""
+    from oto.tools.google.docs.lib.docs_client import DocsClient
+    import json
+
+    content = ''
+    if file:
+        with open(file, 'r', encoding='utf-8') as fh:
+            content = fh.read()
+        if not markdown and file.endswith('.md'):
+            markdown = True
+
+    client = DocsClient(account=account)
+    result = client.create(title, content, markdown=markdown)
+    if file:
+        result['imported'] = file
+    print(json.dumps(result, indent=2, ensure_ascii=False))
+
+
+@app.command("docs-write")
+def docs_write(
+    doc_id: str = typer.Argument(..., help="Google Docs document ID"),
+    file: str = typer.Argument(..., help="Text/markdown file to write"),
+    markdown: bool = typer.Option(False, "--markdown", "-m", help="Parse markdown formatting"),
+    account: Optional[str] = typer.Option(None, "--account", "-a", help="Google account name"),
+):
+    """Replace entire content of a Google Doc with a file's content."""
+    from oto.tools.google.docs.lib.docs_client import DocsClient
+    import json
+
+    with open(file, 'r', encoding='utf-8') as fh:
+        content = fh.read()
+
+    if not markdown and file.endswith('.md'):
+        markdown = True
+
+    client = DocsClient(account=account)
+    result = client.replace_content(doc_id, content, markdown=markdown)
+    print(json.dumps(result, indent=2, ensure_ascii=False))
+
+
 @app.command("docs-headings")
 def docs_headings(
     doc_id: str = typer.Argument(..., help="Google Docs document ID"),
+    account: Optional[str] = typer.Option(None, "--account", "-a", help="Google account name"),
 ):
     """List headings in a Google Doc."""
     from oto.tools.google.docs.lib.docs_client import DocsClient
     import json
 
-    client = DocsClient()
+    client = DocsClient(account=account)
     headings = client.list_headings(doc_id)
     print(json.dumps(headings, indent=2))
 
@@ -79,11 +142,12 @@ def docs_headings(
 def docs_section(
     doc_id: str = typer.Argument(..., help="Google Docs document ID"),
     heading: str = typer.Argument(..., help="Heading text to find"),
+    account: Optional[str] = typer.Option(None, "--account", "-a", help="Google account name"),
 ):
     """Get content of a section in a Google Doc."""
     from oto.tools.google.docs.lib.docs_client import DocsClient
 
-    client = DocsClient()
+    client = DocsClient(account=account)
     section = client.get_section_content(doc_id, heading)
     if section:
         print(f"# {section.title}\n")
@@ -353,3 +417,90 @@ def gmail_archive(
         return
     results = client.archive_messages(ids)
     print(json.dumps({"archived": len(results), "results": results}, indent=2))
+
+
+@app.command("sheets-create")
+def sheets_create(
+    title: str = typer.Argument(..., help="Spreadsheet title"),
+    csv_path: Optional[str] = typer.Option(None, "--csv", "-c", help="CSV file to import"),
+    account: Optional[str] = typer.Option(None, "--account", "-a", help="Google account name"),
+):
+    """Create a new Google Sheets spreadsheet, optionally importing a CSV."""
+    from oto.tools.google.sheets.lib.sheets_client import SheetsClient
+    import json
+
+    client = SheetsClient(account=account)
+    result = client.create(title)
+    if csv_path:
+        client.write_csv(result['id'], csv_path)
+        result['imported'] = csv_path
+    print(json.dumps(result, indent=2, ensure_ascii=False))
+
+
+@app.command("sheets-info")
+def sheets_info(
+    spreadsheet_id: str = typer.Argument(..., help="Google Sheets spreadsheet ID"),
+    account: Optional[str] = typer.Option(None, "--account", "-a", help="Google account name"),
+):
+    """Get spreadsheet metadata (title, sheet names, dimensions)."""
+    from oto.tools.google.sheets.lib.sheets_client import SheetsClient
+    import json
+
+    client = SheetsClient(account=account)
+    meta = client.get_metadata(spreadsheet_id)
+    print(json.dumps(meta, indent=2, ensure_ascii=False))
+
+
+@app.command("sheets-read")
+def sheets_read(
+    spreadsheet_id: str = typer.Argument(..., help="Google Sheets spreadsheet ID"),
+    range: str = typer.Argument("A:ZZ", help="Cell range (e.g. 'Sheet1!A1:D10', 'A:ZZ')"),
+    format: str = typer.Option("csv", "--format", "-f", help="Output format: csv or json"),
+    account: Optional[str] = typer.Option(None, "--account", "-a", help="Google account name"),
+):
+    """Read data from a Google Sheets spreadsheet."""
+    from oto.tools.google.sheets.lib.sheets_client import SheetsClient
+    import json
+
+    client = SheetsClient(account=account)
+
+    if format == "csv":
+        print(client.read_csv(spreadsheet_id, range), end="")
+    else:
+        rows = client.read(spreadsheet_id, range)
+        print(json.dumps({"rows": len(rows), "data": rows}, indent=2, ensure_ascii=False))
+
+
+@app.command("sheets-write")
+def sheets_write(
+    spreadsheet_id: str = typer.Argument(..., help="Google Sheets spreadsheet ID"),
+    csv_path: str = typer.Argument(..., help="Path to CSV file to write"),
+    sheet: Optional[str] = typer.Option(None, "--sheet", "-s", help="Target sheet name"),
+    account: Optional[str] = typer.Option(None, "--account", "-a", help="Google account name"),
+):
+    """Write a CSV file to a Google Sheets spreadsheet (overwrites sheet)."""
+    from oto.tools.google.sheets.lib.sheets_client import SheetsClient
+    import json
+
+    client = SheetsClient(account=account)
+    result = client.write_csv(spreadsheet_id, csv_path, sheet_name=sheet)
+    print(json.dumps(result, indent=2, ensure_ascii=False))
+
+
+@app.command("sheets-append")
+def sheets_append(
+    spreadsheet_id: str = typer.Argument(..., help="Google Sheets spreadsheet ID"),
+    csv_path: str = typer.Argument(..., help="Path to CSV file with rows to append"),
+    range: str = typer.Option("A:ZZ", "--range", "-r", help="Range to append to"),
+    account: Optional[str] = typer.Option(None, "--account", "-a", help="Google account name"),
+):
+    """Append rows from a CSV file to a Google Sheets spreadsheet."""
+    from oto.tools.google.sheets.lib.sheets_client import SheetsClient
+    import csv as csv_mod
+    import json
+
+    client = SheetsClient(account=account)
+    with open(csv_path, 'r', encoding='utf-8') as f:
+        values = list(csv_mod.reader(f))
+    result = client.append(spreadsheet_id, range, values)
+    print(json.dumps(result, indent=2, ensure_ascii=False))

@@ -340,7 +340,7 @@ class PennylaneClient:
 
     def finalize_invoice(self, invoice_id: int) -> dict:
         """Finalize a draft invoice."""
-        return self.put(f"customer_invoices/{invoice_id}", {"draft": False})
+        return self.put(f"customer_invoices/{invoice_id}/finalize", {})
 
     # --- Quotes ---
 

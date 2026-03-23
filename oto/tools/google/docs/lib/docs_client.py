@@ -7,7 +7,7 @@ from dataclasses import dataclass
 from google.oauth2.service_account import Credentials
 from googleapiclient.discovery import build
 
-from oto.tools.google.credentials import get_credentials
+from oto.tools.google.credentials import get_credentials, get_user_credentials, list_accounts
 
 
 @dataclass
@@ -25,20 +25,116 @@ class DocsClient:
 
     SCOPES = ['https://www.googleapis.com/auth/documents']
 
-    def __init__(self, credentials_json: str = None):
+    def __init__(self, credentials_json: str = None, account: str = None):
         if credentials_json and Path(credentials_json).exists():
-            # Legacy: load from file path
+            import json
             with open(credentials_json, 'r') as f:
                 creds_dict = json.load(f)
             self.credentials = Credentials.from_service_account_info(
                 creds_dict, scopes=self.SCOPES
             )
+        elif account or list_accounts():
+            self.credentials = get_user_credentials(self.SCOPES, account=account)
         else:
-            # New: use centralized credentials loader
             self.credentials = get_credentials(self.SCOPES)
 
         self.service = build('docs', 'v1', credentials=self.credentials)
         self._doc_cache = {}
+
+    def create(self, title: str, content: str = '', markdown: bool = False) -> dict:
+        """Create a new Google Doc with optional content.
+
+        Args:
+            title: Document title
+            content: Text content to insert
+            markdown: If True, parse markdown and apply formatting
+        """
+        doc = self.service.documents().create(
+            body={'title': title}
+        ).execute()
+        doc_id = doc['documentId']
+
+        if content:
+            if markdown:
+                self._insert_markdown(doc_id, content)
+            else:
+                self.service.documents().batchUpdate(
+                    documentId=doc_id,
+                    body={'requests': [{
+                        'insertText': {
+                            'location': {'index': 1},
+                            'text': content,
+                        }
+                    }]}
+                ).execute()
+
+        return {
+            'id': doc_id,
+            'title': title,
+            'url': f'https://docs.google.com/document/d/{doc_id}/edit',
+        }
+
+    def _insert_markdown(self, doc_id: str, content: str):
+        """Insert markdown content with formatting into a doc."""
+        from oto.tools.google.docs.lib.markdown_to_docs import markdown_to_requests
+
+        plain_text, fmt_requests = markdown_to_requests(content)
+
+        # First insert plain text
+        requests = [{
+            'insertText': {
+                'location': {'index': 1},
+                'text': plain_text,
+            }
+        }]
+        # Then apply formatting
+        requests.extend(fmt_requests)
+
+        self.service.documents().batchUpdate(
+            documentId=doc_id,
+            body={'requests': requests}
+        ).execute()
+
+    def replace_content(self, doc_id: str, content: str, markdown: bool = False) -> dict:
+        """Replace entire document content with new text."""
+        doc = self.service.documents().get(documentId=doc_id).execute()
+        body = doc['body']['content']
+        end_index = body[-1]['endIndex'] if body else 1
+
+        # Delete existing content
+        requests = []
+        if end_index > 2:
+            requests.append({
+                'deleteContentRange': {
+                    'range': {'startIndex': 1, 'endIndex': end_index - 1}
+                }
+            })
+
+        if markdown:
+            from oto.tools.google.docs.lib.markdown_to_docs import markdown_to_requests
+            plain_text, fmt_requests = markdown_to_requests(content)
+            requests.append({
+                'insertText': {
+                    'location': {'index': 1},
+                    'text': plain_text,
+                }
+            })
+            requests.extend(fmt_requests)
+        else:
+            requests.append({
+                'insertText': {
+                    'location': {'index': 1},
+                    'text': content,
+                }
+            })
+
+        self.service.documents().batchUpdate(
+            documentId=doc_id,
+            body={'requests': requests}
+        ).execute()
+
+        self.clear_cache(doc_id)
+        return {'id': doc_id, 'status': 'replaced', 'length': len(content)}
 
     def get_document(self, doc_id: str, use_cache: bool = False) -> dict:
         """Get document content."""
