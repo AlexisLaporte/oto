@@ -137,6 +137,7 @@ def linkedin_employees(
 def linkedin_search_people(
     keywords: str = typer.Argument(..., help="Search keywords (e.g., 'credit manager')"),
     geo: Optional[str] = typer.Option("105015875", help="Geo URN ID (default: France)"),
+    network: Optional[str] = typer.Option(None, help="Connection degree: F (1st), S (2nd), O (3rd+)"),
     limit: int = typer.Option(50, help="Max results"),
     pages: int = typer.Option(5, help="Max pages to scrape"),
     cookie: Optional[str] = typer.Option(None, envvar="LINKEDIN_COOKIE", help="li_at cookie"),
@@ -152,7 +153,7 @@ def linkedin_search_people(
 
     async def run():
         async with _linkedin_client(cookie=cookie, cdp_url=cdp_url, profile=profile, channel=channel, headless=headless, rate_limit=not no_rate_limit) as client:
-            return await client.search_people(keywords, geo=geo, limit=limit, pages=pages)
+            return await client.search_people(keywords, geo=geo, network=network, limit=limit, pages=pages)
 
     result = asyncio.run(run())
     print(json.dumps(result, indent=2, ensure_ascii=False))

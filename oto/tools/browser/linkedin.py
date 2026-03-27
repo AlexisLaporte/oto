@@ -721,14 +721,16 @@ class LinkedInClient(BrowserClient):
         return companies
 
     async def search_people(
-        self, keywords: str, geo: str = None, limit: int = 50, pages: int = 5
+        self, keywords: str, geo: str = None, network: str = None,
+        limit: int = 50, pages: int = 5,
     ) -> List[dict]:
         """
-        Search people on LinkedIn by keywords (title, skills, etc.) with optional geo filter.
+        Search people on LinkedIn by keywords (title, skills, etc.) with optional geo/network filter.
 
         Args:
             keywords: Search keywords (e.g., "credit manager")
             geo: Geo URN ID for location filter (e.g., "105015875" for France)
+            network: Connection degree filter — "F" (1st), "S" (2nd), "O" (3rd+)
             limit: Max results to return
             pages: Max pages to scrape (10 results per page)
 
@@ -747,6 +749,8 @@ class LinkedInClient(BrowserClient):
             params = f"keywords={quote(keywords)}&origin=FACETED_SEARCH"
             if geo:
                 params += f"&geoUrn=%5B%22{geo}%22%5D"
+            if network:
+                params += f"&network=%5B%22{network}%22%5D"
             if page > 1:
                 params += f"&page={page}"
 

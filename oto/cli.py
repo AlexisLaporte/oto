@@ -53,6 +53,7 @@ def show_config():
         "GROQ_API_KEY",
         "ANTHROPIC_ADMIN_API_KEY",
         "FOLK_API_KEY",
+        "ATTIO_API_KEY",
         "TULS_API_TOKEN",
     ]
     for name in secrets:

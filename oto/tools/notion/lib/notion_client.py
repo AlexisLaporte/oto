@@ -9,6 +9,8 @@ from pathlib import Path
 from typing import Optional, Dict, Any
 import requests
 
+from ....config import get_cache_dir
+
 
 class NotionClient:
     """Notion API client with automatic caching."""
@@ -28,7 +30,7 @@ class NotionClient:
         }
 
         # Setup cache directory
-        self.cache_dir = Path(__file__).parent.parent.parent / '.cache' / 'notion'
+        self.cache_dir = get_cache_dir() / 'notion'
         self.cache_dir.mkdir(parents=True, exist_ok=True)
         self.cache_ttl = 86400  # 24 hours
 

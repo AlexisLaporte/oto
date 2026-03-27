@@ -10,6 +10,7 @@ from google.oauth2.service_account import Credentials
 from googleapiclient.discovery import build
 
 from oto.tools.google.credentials import get_credentials, get_user_credentials, list_accounts
+from oto.config import get_cache_dir
 
 
 class DriveClientError(Exception):
@@ -21,7 +22,7 @@ class DriveClient:
     """Google Drive API client with built-in caching."""
 
     SCOPES = ['https://www.googleapis.com/auth/drive']
-    CACHE_DIR = Path(__file__).parent.parent.parent / '.cache' / 'google-drive'
+    CACHE_DIR = get_cache_dir() / 'google-drive'
     CACHE_TTL = 3600  # 1 hour default cache TTL
 
     def __init__(self, credentials_json: str = None, cache_ttl: int = CACHE_TTL, account: str = None):

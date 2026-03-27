@@ -62,6 +62,21 @@ def drive_upload(
     print(json.dumps(result, indent=2))
 
 
+@app.command("drive-mkdir")
+def drive_mkdir(
+    name: str = typer.Argument(..., help="Folder name"),
+    parent: Optional[str] = typer.Option(None, "--parent", "-p", help="Parent folder ID"),
+    account: Optional[str] = typer.Option(None, "--account", "-a", help="Google account name"),
+):
+    """Create a folder in Google Drive."""
+    from oto.tools.google.drive.lib.drive_client import DriveClient
+    import json
+
+    client = DriveClient(account=account)
+    result = client.create_folder(name, parent_folder_id=parent)
+    print(json.dumps(result, indent=2))
+
+
 @app.command("drive-move")
 def drive_move(
     file_id: str = typer.Argument(..., help="Google Drive file ID to move"),
@@ -229,7 +244,8 @@ def calendar_upcoming(
 @app.command("calendar-search")
 def calendar_search(
     query: str = typer.Argument(..., help="Search query"),
-    days: int = typer.Option(30, "--days", "-d", help="Search window in days"),
+    days: int = typer.Option(30, "--days", "-d", help="Search window in days (future). Use --past for past events."),
+    past: int = typer.Option(0, "--past", "-p", help="Search window in past days"),
     calendar_id: str = typer.Option("primary", "--calendar", "-c", help="Calendar ID"),
     limit: int = typer.Option(20, "--limit", "-n", help="Max events"),
     account: Optional[str] = typer.Option(None, "--account", "-a", help="Google account name"),
@@ -241,10 +257,12 @@ def calendar_search(
 
     client = CalendarClient(account=account)
     now = datetime.now(timezone.utc)
+    time_min = (now - timedelta(days=past)).isoformat() if past else now.isoformat()
+    time_max = (now + timedelta(days=days)).isoformat()
     events = client.list_events(
         calendar_id=calendar_id,
-        time_min=now.isoformat(),
-        time_max=(now + timedelta(days=days)).isoformat(),
+        time_min=time_min,
+        time_max=time_max,
         max_results=limit,
         query=query,
     )

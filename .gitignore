@@ -9,5 +9,8 @@ oto/tools/whatsapp/node/node_modules/
 secrets.env
 *-token-*.json
 
+# Cache
+.cache/
+
 # Internal
 PLAN.md

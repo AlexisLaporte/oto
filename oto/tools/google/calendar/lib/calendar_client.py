@@ -52,21 +52,20 @@ class CalendarClient:
 
         Args:
             calendar_id: Calendar ID (default: 'primary').
-            time_min: Start of time range (ISO 8601). Default: now.
-            time_max: End of time range (ISO 8601). Default: none.
+            time_min: Start of time range (ISO 8601). Default: none (no lower bound).
+            time_max: End of time range (ISO 8601). Default: none (no upper bound).
             max_results: Maximum number of events.
             query: Free text search query.
         """
-        if time_min is None:
-            time_min = datetime.now(timezone.utc).isoformat()
 
         kwargs = {
             'calendarId': calendar_id,
-            'timeMin': time_min,
             'maxResults': max_results,
             'singleEvents': True,
             'orderBy': 'startTime',
         }
+        if time_min:
+            kwargs['timeMin'] = time_min
         if time_max:
             kwargs['timeMax'] = time_max
         if query:

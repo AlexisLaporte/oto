@@ -129,7 +129,8 @@ class AttioNotes:
                 "parent_object": parent_object,
                 "parent_record_id": parent_record_id,
                 "title": title,
-                "content_md": content,
+                "format": "markdown",
+                "content": content,
             }
         }
         return self.client._request("POST", "notes", json=data)
