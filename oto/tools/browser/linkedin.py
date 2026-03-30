@@ -112,9 +112,9 @@ class LinkedInClient(BrowserClient):
         self.account_type = account_type
         self._use_profile = profile is not None or cdp_url is not None
 
-        # Get cookie from arg or env or session file (not needed with profile/cdp)
-        self._li_at_cookie = cookie or os.environ.get("LINKEDIN_COOKIE")
-        resolved_user_agent = user_agent or os.environ.get("LINKEDIN_USER_AGENT")
+        # Get cookie from arg or secrets (not needed with profile/cdp)
+        self._li_at_cookie = cookie or get_secret("LINKEDIN_COOKIE")
+        resolved_user_agent = user_agent or get_secret("LINKEDIN_USER_AGENT")
 
         # Allow disabling rate limit via env var (for automated agent jobs)
         if os.environ.get("LINKEDIN_NO_RATE_LIMIT", "").lower() in ("1", "true", "yes"):
@@ -269,7 +269,7 @@ class LinkedInClient(BrowserClient):
 
         about_url = url.rstrip("/") + "/about/"
         await self.goto(about_url)
-        await self.wait(2)
+        await self.wait(4)
 
         data = {"url": url}
 
@@ -284,19 +284,49 @@ class LinkedInClient(BrowserClient):
         if h1:
             data["name"] = (await h1.inner_text()).strip()
 
-        # Tagline
-        tagline = await self.query_selector(".org-top-card-summary__tagline")
-        if tagline:
-            data["tagline"] = (await tagline.inner_text()).strip()
-
-        # About text
-        for selector in ["p.break-words", '[data-test-id="about-us__description"]']:
-            el = await self.query_selector(selector)
-            if el:
-                text = (await el.inner_text()).strip()
-                if len(text) > 50:
-                    data["about"] = text
-                    break
+        # About text: find the "Overview"/"Vue d'ensemble" section
+        about_data = await self.page.evaluate("""() => {
+            const r = {};
+            // Find the section that contains Overview/Vue d'ensemble
+            const sections = document.querySelectorAll('section');
+            for (const s of sections) {
+                const h2 = s.querySelector('h2');
+                if (!h2) continue;
+                const title = h2.textContent.trim().toLowerCase();
+                const t = title.replace(/[\u2018\u2019\u0060]/g, "'");
+                if (t.includes('overview') || t.includes("vue d'ensemble")) {
+                    // Get the longest paragraph in this section
+                    const ps = [...s.querySelectorAll('p')];
+                    let best = '';
+                    for (const p of ps) {
+                        const t = p.textContent.trim();
+                        if (t.length > best.length) best = t;
+                    }
+                    if (best.length > 30) r.about = best;
+                    break;
+                }
+            }
+            // Tagline: first p directly after h1 with short text
+            const h1 = document.querySelector('h1');
+            if (h1) {
+                const section = h1.closest('section') || h1.parentElement;
+                if (section) {
+                    const ps = [...section.querySelectorAll('p')];
+                    for (const p of ps) {
+                        const t = p.textContent.trim();
+                        if (t.length > 5 && t.length < 200) {
+                            r.tagline = t;
+                            break;
+                        }
+                    }
+                }
+            }
+            return r;
+        }""")
+        if about_data.get("about"):
+            data["about"] = about_data["about"]
+        if about_data.get("tagline"):
+            data["tagline"] = about_data["tagline"]
 
         # Extract dt/dd pairs
         dt_elements = await self.query_selector_all("dt")
@@ -331,55 +361,68 @@ class LinkedInClient(BrowserClient):
         await self.check_rate_limit("profile_visit")
 
         await self.goto(url)
-        await self.wait(2)
+        await self.wait(3)
 
         data = {"url": url}
 
-        # Name
-        name_selectors = [
-            "h1.text-heading-xlarge",
-            "h1.inline.t-24",
-            ".pv-text-details__left-panel h1",
-            "h1",
-        ]
-        for selector in name_selectors:
-            name_el = await self.query_selector(selector)
-            if name_el:
-                name = (await name_el.inner_text()).strip()
-                if name and len(name) > 1:
-                    data["name"] = name
-                    break
+        # LinkedIn uses SDUI with hashed CSS classes — extract via JS + componentkey
+        extracted = await self.page.evaluate("""() => {
+            const r = {};
+            // Topcard: name, headline, location
+            const topcard = document.querySelector('section[componentkey*="Topcard"]');
+            if (topcard) {
+                const h2 = topcard.querySelector('h2');
+                if (h2) r.name = h2.textContent.trim();
+                // Collect all <p> texts in topcard
+                const ps = [...topcard.querySelectorAll('p')].map(p => p.textContent.trim()).filter(t => t.length > 1);
+                r._topcard_texts = ps;
+            }
+            // About section
+            const about = document.querySelector('section[componentkey*="About"]');
+            if (about) {
+                const box = about.querySelector('[data-testid="expandable-text-box"]');
+                if (box) {
+                    r.about = box.textContent.trim();
+                } else {
+                    // Fallback: longest <p> in the about section
+                    const ps = [...about.querySelectorAll('p')];
+                    let best = '';
+                    for (const p of ps) {
+                        const t = p.textContent.trim();
+                        if (t.length > best.length) best = t;
+                    }
+                    if (best.length > 20) r.about = best;
+                }
+            }
+            return r;
+        }""")
 
-        # Headline
-        headline_selectors = [
-            ".text-body-medium.break-words",
-            ".pv-text-details__left-panel .text-body-medium",
-        ]
-        for selector in headline_selectors:
-            headline = await self.query_selector(selector)
-            if headline:
-                text = (await headline.inner_text()).strip()
-                if text and len(text) > 3:
-                    data["headline"] = text
-                    break
+        if extracted.get("name"):
+            data["name"] = extracted["name"]
+        if extracted.get("about"):
+            data["about"] = extracted["about"]
 
-        # Location
-        location_selectors = [
-            ".text-body-small.inline.t-black--light.break-words",
-            ".pv-text-details__left-panel .text-body-small",
+        # Parse topcard texts: filter out pronouns, connection degree, buttons
+        skip_patterns = re.compile(
+            r"^(·\s*\d|she/|he/|they/|coordonn|contact|message$|suivre$|follow$|"
+            r"se connecter$|connect$|\d+\s*(relations?|connections?|abonnés|followers))",
+            re.IGNORECASE,
+        )
+        topcard_texts = [
+            t for t in extracted.get("_topcard_texts", [])
+            if not skip_patterns.search(t) and t != data.get("name")
         ]
-        for selector in location_selectors:
-            location = await self.query_selector(selector)
-            if location:
-                text = (await location.inner_text()).strip()
-                if text:
-                    data["location"] = text
-                    break
-
-        # About section
-        about = await self.query_selector("#about ~ div .inline-show-more-text")
-        if about:
-            data["about"] = (await about.inner_text()).strip()
+        # First remaining text = headline, then look for location pattern
+        if topcard_texts:
+            data["headline"] = topcard_texts[0]
+        for t in topcard_texts[1:]:
+            # Location typically contains a comma or country/region keywords
+            if "," in t or any(kw in t.lower() for kw in [
+                "france", "états-unis", "united", "paris", "london", "berlin",
+                "région", "area", "metro", "périphérie",
+            ]):
+                data["location"] = t
+                break
 
         return data
 
@@ -394,6 +437,63 @@ class LinkedInClient(BrowserClient):
         html = await self.get_html()
         match = re.search(r"urn:li:fs_normalized_company:(\d+)", html)
         return match.group(1) if match else None
+
+    # JS snippet: extract people search results from current page.
+    # Uses computed font-size/weight to distinguish result names (16px/600)
+    # from mutual connection links (12px/400), since CSS classes are hashed.
+    _JS_EXTRACT_PEOPLE_RESULTS = r"""() => {
+        const results = [];
+        const seen = new Set();
+        const links = document.querySelectorAll('a[href*="/in/"]');
+
+        for (const link of links) {
+            const text = link.textContent.trim();
+            if (text.length < 2 || text.length > 80) continue;
+            if (link.parentElement?.tagName !== 'P') continue;
+
+            const style = window.getComputedStyle(link.parentElement);
+            if (parseFloat(style.fontSize) < 14 || parseInt(style.fontWeight) < 600) continue;
+
+            const href = link.href?.split('?')[0];
+            if (!href || !href.includes('/in/') || seen.has(href)) continue;
+            seen.add(href);
+
+            const name = text.replace(/\s+/g, ' ').trim();
+
+            // Walk up to find the card-level <a> wrapping this result
+            let cardLink = null;
+            let el = link.parentElement;
+            for (let i = 0; i < 10; i++) {
+                if (!el) break;
+                if (el.tagName === 'A' && el.href?.includes('/in/')) { cardLink = el; break; }
+                el = el.parentElement;
+            }
+
+            let headline = '', location = '';
+            if (cardLink) {
+                const ps = [...cardLink.querySelectorAll('p')]
+                    .map(p => p.textContent.trim()).filter(t => t.length > 1);
+                let passedName = false;
+                for (const p of ps) {
+                    if (p.includes(name.substring(0, Math.min(name.length, 6)))) {
+                        passedName = true; continue;
+                    }
+                    if (!passedName) continue;
+                    if (/^[•·]?\s*\d*(st|nd|rd|th|er?|e)?\+?$/i.test(p)) continue;
+                    if (/^(message|suivre|follow|se connecter|connect)$/i.test(p)) continue;
+                    if (!headline) headline = p;
+                    else if (!location) { location = p; break; }
+                }
+            }
+
+            results.push({name, headline, location, linkedin: href});
+        }
+        return results;
+    }"""
+
+    async def _extract_people_results(self) -> List[dict]:
+        """Extract people search results from the current page via JS."""
+        return await self.page.evaluate(self._JS_EXTRACT_PEOPLE_RESULTS)
 
     async def search_employees(
         self, company_slug: str, keywords: List[str] = None, limit: int = 10
@@ -421,66 +521,12 @@ class LinkedInClient(BrowserClient):
         await self.goto(search_url)
         await self.wait(4)
 
-        # Scroll to load results
         for i in range(8):
             await self.scroll_by((i + 1) * 400)
             await self.wait(1.5)
 
-        employees = []
-        seen_urls = set()
-        seen_names = set()
-
-        links = await self.query_selector_all('a[href*="/in/"]')
-
-        for link in links:
-            if len(employees) >= limit:
-                break
-
-            href = await link.get_attribute("href")
-            if not href:
-                continue
-
-            url = href.split("?")[0]
-            if url in seen_urls or "/in/" not in url:
-                continue
-
-            text = await link.inner_text()
-            if not text or len(text.strip()) < 3:
-                continue
-
-            lines = [l.strip() for l in text.strip().split("\n") if l.strip()]
-            if len(lines) < 3:
-                continue
-
-            name = re.sub(r"\s*•.*$", "", lines[0]).strip()
-            if len(name) < 3 or name.lower() in ["voir", "view", "message", "suivre", "follow"]:
-                continue
-
-            seen_urls.add(url)
-
-            name_lower = name.lower()
-            if name_lower in seen_names:
-                continue
-            seen_names.add(name_lower)
-
-            # Find headline
-            headline = ""
-            for line in lines[1:]:
-                line_stripped = line.strip()
-                if re.match(r"^•\s*\d*(st|nd|rd|th|er?|e)?\+?", line_stripped, re.IGNORECASE):
-                    continue
-                if line_stripped.lower() in ["message", "suivre", "follow", "se connecter", "connect"]:
-                    continue
-                headline = line_stripped
-                break
-
-            employees.append({
-                "name": name,
-                "headline": headline,
-                "linkedin": url
-            })
-
-        return employees
+        results = await self._extract_people_results()
+        return results[:limit]
 
     async def get_company_people(self, company_slug: str, limit: int = 20) -> List[dict]:
         """
@@ -572,83 +618,106 @@ class LinkedInClient(BrowserClient):
 
         activity_url = url.rstrip("/") + "/recent-activity/all/"
         await self.goto(activity_url)
-        await self.wait(3)
+        await self.wait(4)
 
-        posts = []
+        # Scroll to load posts (activity items use data-urn with activity URNs)
         last_count = 0
         stale_rounds = 0
-
-        # Scroll to load posts
         for i in range(max_posts // 2 + 3):
             await self.scroll_by(random.randint(400, 700))
             await self.wait(random.uniform(1.5, 2.5))
 
-            items = await self.query_selector_all(".feed-shared-update-v2")
-            if len(items) >= max_posts:
+            count = await self.page.evaluate(
+                'document.querySelectorAll("[data-urn*=\\"urn:li:activity\\"]").length'
+            )
+            if count >= max_posts:
                 break
-            if len(items) == last_count:
+            if count == last_count:
                 stale_rounds += 1
                 if stale_rounds >= 3:
                     break
             else:
                 stale_rounds = 0
-                last_count = len(items)
+                last_count = count
 
-        items = await self.query_selector_all(".feed-shared-update-v2")
+        # Extract posts via JS (activity page uses Ember with data-urn attributes)
+        posts = await self.page.evaluate(r"""(maxPosts) => {
+            const items = document.querySelectorAll('[data-urn*="urn:li:activity"]');
+            const posts = [];
+            const seen = new Set();
 
-        for item in items:
-            if len(posts) >= max_posts:
-                break
+            for (const item of items) {
+                if (posts.length >= maxPosts) break;
 
-            # Post content
-            content_el = await item.query_selector(".break-words")
-            if not content_el:
-                content_el = await item.query_selector(".update-components-text")
-            content = (await content_el.inner_text()).strip() if content_el else ""
+                const urn = item.getAttribute('data-urn');
+                if (!urn || seen.has(urn)) continue;
+                // Skip comment URNs
+                if (urn.includes('comment')) continue;
+                seen.add(urn);
 
-            if not content:
-                continue
+                // Post content: find the text div (skip social/actor/image sections)
+                let content = '';
+                const divs = item.querySelectorAll('div');
+                const skipPattern = /social|actor|action-bar|image|video|comments?-list/i;
+                for (const d of divs) {
+                    const cls = d.className || '';
+                    if (skipPattern.test(cls)) continue;
+                    if (d.querySelectorAll('div').length > 3) continue;
+                    const t = d.textContent.trim();
+                    if (t.length > content.length && t.length > 30 && t.length < 10000) {
+                        // Skip engagement-like content (starts with just a number)
+                        if (/^\d+\s*$/.test(t.split('\n')[0].trim())) continue;
+                        content = t;
+                    }
+                }
+                if (!content || content.length < 20) continue;
 
-            # Date
-            date = ""
-            time_el = await item.query_selector("time")
-            if time_el:
-                date = await time_el.get_attribute("datetime") or ""
+                // Activity ID → URL
+                const activityId = urn.match(/activity:(\d+)/)?.[1];
+                const postUrl = activityId ?
+                    'https://www.linkedin.com/feed/update/urn:li:activity:' + activityId + '/' : '';
 
-            # Post URL
-            post_url = ""
-            urn = await item.get_attribute("data-urn")
-            if urn:
-                activity_id = urn.split(":")[-1]
-                post_url = f"https://www.linkedin.com/feed/update/urn:li:activity:{activity_id}/"
+                // Date: from sub-description or time element
+                let date = '';
+                const subDesc = item.querySelector('[class*="sub-description"]');
+                if (subDesc) date = subDesc.textContent.trim().split('•')[0].trim();
 
-            # Is repost
-            is_repost = False
-            header = await item.query_selector(".update-components-header__text-view")
-            if header:
-                header_text = (await header.inner_text()).lower()
-                is_repost = "repost" in header_text or "a republié" in header_text
+                // Is repost
+                let isRepost = false;
+                const header = item.querySelector('[class*="header__text"]');
+                if (header) {
+                    const ht = header.textContent.toLowerCase();
+                    isRepost = ht.includes('repost') || ht.includes('republié');
+                }
 
-            # Engagement
-            reactions = 0
-            comments = 0
-            social_counts = await item.query_selector(".social-details-social-counts")
-            if social_counts:
-                text = (await social_counts.inner_text()).strip()
-                r_match = re.search(r"(\d[\d\s,.]*)\s*(reaction|j'aime|like)", text, re.IGNORECASE)
-                if r_match:
-                    reactions = int(re.sub(r"[\s,.]", "", r_match.group(1)))
-                c_match = re.search(r"(\d[\d\s,.]*)\s*comment", text, re.IGNORECASE)
-                if c_match:
-                    comments = int(re.sub(r"[\s,.]", "", c_match.group(1)))
+                // Engagement
+                let reactions = 0, comments = 0;
+                const socialArea = item.querySelector('[class*="social-activity"], [class*="social-counts"]');
+                if (socialArea) {
+                    const text = socialArea.textContent;
+                    const rMatch = text.match(/(\d[\d\s,.]*)\s*$/m);
+                    // Count reactions from the first number-like pattern
+                    const spans = socialArea.querySelectorAll('span');
+                    for (const s of spans) {
+                        const st = s.textContent.trim();
+                        if (/personne|reaction|like|j'aime/i.test(st)) {
+                            const m = st.match(/(\d[\d\s,.]*)/);
+                            if (m) reactions = parseInt(m[1].replace(/[\s,.]/g, ''));
+                        }
+                        if (/comment/i.test(st)) {
+                            const m = st.match(/(\d[\d\s,.]*)/);
+                            if (m) comments = parseInt(m[1].replace(/[\s,.]/g, ''));
+                        }
+                    }
+                }
 
-            posts.append({
-                "content": content,
-                "date": date,
-                "url": post_url,
-                "is_repost": is_repost,
-                "engagement": {"reactions": reactions, "comments": comments},
-            })
+                posts.push({
+                    content, date, url: postUrl, is_repost: isRepost,
+                    engagement: {reactions, comments}
+                });
+            }
+            return posts;
+        }""", max_posts)
 
         return posts
 
@@ -758,67 +827,23 @@ class LinkedInClient(BrowserClient):
             await self.goto(search_url)
             await self.wait(4)
 
-            # Scroll to load all results on page
             for i in range(8):
                 await self.scroll_by((i + 1) * 400)
                 await self.wait(1)
 
-            # Parse result cards
-            links = await self.query_selector_all('a[href*="/in/"]')
+            page_results = await self._extract_people_results()
             page_count = 0
-
-            for link in links:
+            for r in page_results:
                 if len(results) >= limit:
                     break
-
-                href = await link.get_attribute("href")
-                if not href:
+                if r["linkedin"] in seen_urls:
                     continue
-
-                url = href.split("?")[0]
-                if url in seen_urls or "/in/" not in url:
-                    continue
-
-                text = await link.inner_text()
-                if not text or len(text.strip()) < 3:
-                    continue
-
-                lines = [l.strip() for l in text.strip().split("\n") if l.strip()]
-                if len(lines) < 2:
-                    continue
-
-                name = re.sub(r"\s*•.*$", "", lines[0]).strip()
-                if len(name) < 3 or name.lower() in ["voir", "view", "message", "suivre", "follow", "se connecter", "connect"]:
-                    continue
-
-                seen_urls.add(url)
-
-                # Extract headline (skip connection degree indicators)
-                headline = ""
-                location = ""
-                for line in lines[1:]:
-                    stripped = line.strip()
-                    if re.match(r"^•?\s*\d*(st|nd|rd|th|er?|e)?\+?$", stripped, re.IGNORECASE):
-                        continue
-                    if stripped.lower() in ["message", "suivre", "follow", "se connecter", "connect"]:
-                        continue
-                    if not headline:
-                        headline = stripped
-                    elif not location:
-                        location = stripped
-                        break
-
-                results.append({
-                    "name": name,
-                    "headline": headline,
-                    "linkedin": url,
-                    "location": location,
-                })
+                seen_urls.add(r["linkedin"])
+                results.append(r)
                 page_count += 1
 
             print(f"  Page {page}: {page_count} results (total: {len(results)})")
 
-            # No results on this page = no more pages
             if page_count == 0:
                 break
 
