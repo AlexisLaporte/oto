@@ -222,7 +222,7 @@ def create_invoice(
     lines = []
     for l in line:
         parts = l.split(":")
-        entry = {"product_id": int(parts[0]), "quantity": int(parts[1])}
+        entry = {"product_id": int(parts[0]), "quantity": float(parts[1])}
         if len(parts) >= 3:
             entry["raw_currency_unit_price"] = parts[2]
         lines.append(entry)
@@ -256,16 +256,30 @@ def create_quote(
     """Create a quote.
 
     Lines format: --line product_id:quantity[:unit_price]
+
+    Product details (label, unit, vat_rate) are resolved automatically from the product_id.
     """
+    client = _client()
+    products = {p["id"]: p for p in client.list_products()}
+
     lines = []
     for l in line:
         parts = l.split(":")
-        entry = {"product_id": int(parts[0]), "quantity": int(parts[1])}
-        if len(parts) >= 3:
-            entry["raw_currency_unit_price"] = parts[2]
+        pid = int(parts[0])
+        product = products.get(pid)
+        if not product:
+            raise typer.BadParameter(f"Product {pid} not found")
+        entry = {
+            "product_id": pid,
+            "quantity": float(parts[1]),
+            "label": product["label"],
+            "raw_currency_unit_price": parts[2] if len(parts) >= 3 else product["price_before_tax"],
+            "unit": product["unit"],
+            "vat_rate": product["vat_rate"],
+        }
         lines.append(entry)
 
-    result = _client().create_quote(
+    result = client.create_quote(
         customer_id=customer_id, date=date, deadline=deadline,
         lines=lines, external_reference=ref,
     )

@@ -346,7 +346,7 @@ class PennylaneClient:
 
     def create_quote(self, customer_id: int, date: str, deadline: str,
                      lines: list[dict], external_reference: str = None,
-                     currency: str = "EUR", language: str = "fr") -> dict:
+                     currency: str = "EUR", language: str = "fr_FR") -> dict:
         """Create a quote."""
         body = {
             "customer_id": customer_id,
