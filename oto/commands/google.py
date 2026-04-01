@@ -1,10 +1,11 @@
 """Google Workspace commands (Drive, Docs, Sheets, Slides, Gmail, Calendar, Auth)."""
 
+import json
+
 import typer
 from typing import Optional
 
 app = typer.Typer(help="Google Workspace tools (Drive, Docs, Sheets, Slides, Gmail, Calendar)")
-
 
 def _apply_signature(client, body: str, html: Optional[str]) -> Optional[str]:
     """Convert plain text body to HTML with Gmail signature appended."""
@@ -15,7 +16,6 @@ def _apply_signature(client, body: str, html: Optional[str]) -> Optional[str]:
     body_html = html or '<div dir="ltr">' + html_mod.escape(body).replace('\n', '<br>') + '</div>'
     return body_html + '<br>--<br>' + signature
 
-
 @app.command("drive-list")
 def drive_list(
     folder_id: Optional[str] = typer.Option(None, help="Filter by parent folder ID"),
@@ -25,12 +25,10 @@ def drive_list(
 ):
     """List files in Google Drive."""
     from oto.tools.google.drive.lib.drive_client import DriveClient
-    import json
 
     client = DriveClient(account=account)
     files = client.list_files(folder_id=folder_id, query=query, page_size=limit)
     print(json.dumps({"count": len(files), "files": files}, indent=2))
-
 
 @app.command("drive-download")
 def drive_download(
@@ -45,7 +43,6 @@ def drive_download(
     result = client.download_file(file_id, output)
     print(f"Downloaded: {result['filename']} -> {result['output_path']}")
 
-
 @app.command("drive-upload")
 def drive_upload(
     file_path: str = typer.Argument(..., help="Local file path to upload"),
@@ -55,12 +52,10 @@ def drive_upload(
 ):
     """Upload a file to Google Drive."""
     from oto.tools.google.drive.lib.drive_client import DriveClient
-    import json
 
     client = DriveClient(account=account)
     result = client.upload_file(local_path=file_path, folder_id=folder_id, file_name=name)
     print(json.dumps(result, indent=2))
-
 
 @app.command("drive-mkdir")
 def drive_mkdir(
@@ -70,12 +65,10 @@ def drive_mkdir(
 ):
     """Create a folder in Google Drive."""
     from oto.tools.google.drive.lib.drive_client import DriveClient
-    import json
 
     client = DriveClient(account=account)
     result = client.create_folder(name, parent_folder_id=parent)
     print(json.dumps(result, indent=2))
-
 
 @app.command("drive-move")
 def drive_move(
@@ -85,12 +78,22 @@ def drive_move(
 ):
     """Move a file to a different folder in Google Drive."""
     from oto.tools.google.drive.lib.drive_client import DriveClient
-    import json
 
     client = DriveClient(account=account)
     result = client.move_file(file_id, folder_id)
     print(json.dumps(result, indent=2))
 
+@app.command("drive-delete")
+def drive_delete(
+    file_id: str = typer.Argument(..., help="Google Drive file ID to delete"),
+    account: Optional[str] = typer.Option(None, "--account", "-a", help="Google account name"),
+):
+    """Permanently delete a file from Google Drive."""
+    from oto.tools.google.drive.lib.drive_client import DriveClient
+
+    client = DriveClient(account=account)
+    result = client.delete_file(file_id)
+    print(json.dumps(result, indent=2))
 
 @app.command("docs-create")
 def docs_create(
@@ -101,7 +104,6 @@ def docs_create(
 ):
     """Create a new Google Doc, optionally importing content from a file."""
     from oto.tools.google.docs.lib.docs_client import DocsClient
-    import json
 
     content = ''
     if file:
@@ -116,7 +118,6 @@ def docs_create(
         result['imported'] = file
     print(json.dumps(result, indent=2, ensure_ascii=False))
 
-
 @app.command("docs-write")
 def docs_write(
     doc_id: str = typer.Argument(..., help="Google Docs document ID"),
@@ -126,7 +127,6 @@ def docs_write(
 ):
     """Replace entire content of a Google Doc with a file's content."""
     from oto.tools.google.docs.lib.docs_client import DocsClient
-    import json
 
     with open(file, 'r', encoding='utf-8') as fh:
         content = fh.read()
@@ -138,7 +138,6 @@ def docs_write(
     result = client.replace_content(doc_id, content, markdown=markdown)
     print(json.dumps(result, indent=2, ensure_ascii=False))
 
-
 @app.command("docs-headings")
 def docs_headings(
     doc_id: str = typer.Argument(..., help="Google Docs document ID"),
@@ -146,12 +145,10 @@ def docs_headings(
 ):
     """List headings in a Google Doc."""
     from oto.tools.google.docs.lib.docs_client import DocsClient
-    import json
 
     client = DocsClient(account=account)
     headings = client.list_headings(doc_id)
     print(json.dumps(headings, indent=2))
-
 
 @app.command("docs-section")
 def docs_section(
@@ -170,7 +167,6 @@ def docs_section(
     else:
         print(f"Section not found: {heading}")
         raise typer.Exit(1)
-
 
 @app.command("auth")
 def auth(
@@ -197,19 +193,16 @@ def auth(
     setup_account(name, ALL_SCOPES)
     print(f"Account '{name}' configured.")
 
-
 @app.command("calendar-list")
 def calendar_list(
     account: Optional[str] = typer.Option(None, "--account", "-a", help="Google account name"),
 ):
     """List available calendars."""
     from oto.tools.google.calendar.lib.calendar_client import CalendarClient
-    import json
 
     client = CalendarClient(account=account)
     calendars = client.list_calendars()
     print(json.dumps({"count": len(calendars), "calendars": calendars}, indent=2, ensure_ascii=False))
-
 
 @app.command("calendar-today")
 def calendar_today(
@@ -218,12 +211,10 @@ def calendar_today(
 ):
     """List today's events."""
     from oto.tools.google.calendar.lib.calendar_client import CalendarClient
-    import json
 
     client = CalendarClient(account=account)
     events = client.today(calendar_id=calendar_id)
     print(json.dumps({"count": len(events), "events": events}, indent=2, ensure_ascii=False))
-
 
 @app.command("calendar-upcoming")
 def calendar_upcoming(
@@ -234,12 +225,10 @@ def calendar_upcoming(
 ):
     """List upcoming events (default: next 7 days)."""
     from oto.tools.google.calendar.lib.calendar_client import CalendarClient
-    import json
 
     client = CalendarClient(account=account)
     events = client.upcoming(days=days, calendar_id=calendar_id, max_results=limit)
     print(json.dumps({"count": len(events), "events": events}, indent=2, ensure_ascii=False))
-
 
 @app.command("calendar-search")
 def calendar_search(
@@ -253,7 +242,6 @@ def calendar_search(
     """Search calendar events."""
     from oto.tools.google.calendar.lib.calendar_client import CalendarClient
     from datetime import datetime, timedelta, timezone
-    import json
 
     client = CalendarClient(account=account)
     now = datetime.now(timezone.utc)
@@ -268,7 +256,6 @@ def calendar_search(
     )
     print(json.dumps({"count": len(events), "events": events}, indent=2, ensure_ascii=False))
 
-
 @app.command("calendar-get")
 def calendar_get(
     event_id: str = typer.Argument(..., help="Event ID"),
@@ -277,12 +264,10 @@ def calendar_get(
 ):
     """Get details of a calendar event."""
     from oto.tools.google.calendar.lib.calendar_client import CalendarClient
-    import json
 
     client = CalendarClient(account=account)
     event = client.get_event(event_id, calendar_id=calendar_id)
     print(json.dumps(event, indent=2, ensure_ascii=False))
-
 
 @app.command("gmail-list")
 def gmail_list(
@@ -293,13 +278,11 @@ def gmail_list(
 ):
     """List recent Gmail messages."""
     from oto.tools.google.gmail.lib.gmail_client import GmailClient
-    import json
 
     client = GmailClient(account=account)
     label_ids = [label] if label else None
     messages = client.list_messages(query=query, label_ids=label_ids, max_results=limit)
     print(json.dumps({"count": len(messages), "messages": messages}, indent=2, ensure_ascii=False))
-
 
 @app.command("gmail-search")
 def gmail_search(
@@ -309,12 +292,10 @@ def gmail_search(
 ):
     """Search Gmail messages."""
     from oto.tools.google.gmail.lib.gmail_client import GmailClient
-    import json
 
     client = GmailClient(account=account)
     messages = client.search(query=query, max_results=limit)
     print(json.dumps({"count": len(messages), "messages": messages}, indent=2, ensure_ascii=False))
-
 
 @app.command("gmail-get")
 def gmail_get(
@@ -323,12 +304,10 @@ def gmail_get(
 ):
     """Read a Gmail message."""
     from oto.tools.google.gmail.lib.gmail_client import GmailClient
-    import json
 
     client = GmailClient(account=account)
     message = client.get_message(message_id)
     print(json.dumps(message, indent=2, ensure_ascii=False))
-
 
 @app.command("gmail-attachments")
 def gmail_attachments(
@@ -338,12 +317,10 @@ def gmail_attachments(
 ):
     """Download attachments from a Gmail message."""
     from oto.tools.google.gmail.lib.gmail_client import GmailClient
-    import json
 
     client = GmailClient(account=account)
     files = client.download_attachments(message_id, output)
     print(json.dumps({"count": len(files), "files": files}, indent=2, ensure_ascii=False))
-
 
 @app.command("gmail-draft")
 def gmail_draft(
@@ -360,7 +337,6 @@ def gmail_draft(
 ):
     """Create a draft email in Gmail. Use --reply-to for threaded replies."""
     from oto.tools.google.gmail.lib.gmail_client import GmailClient
-    import json
 
     client = GmailClient(account=account)
     final_html = _apply_signature(client, body, html) if sign else html
@@ -371,7 +347,6 @@ def gmail_draft(
             raise typer.BadParameter("--to and --subject are required (unless using --reply-to)")
         result = client.create_draft(to=to, subject=subject, body=body, html=final_html, cc=cc, bcc=bcc, attachments=attach)
     print(json.dumps(result, indent=2))
-
 
 @app.command("gmail-reply")
 def gmail_reply(
@@ -385,13 +360,11 @@ def gmail_reply(
 ):
     """Reply to a Gmail message (preserves thread)."""
     from oto.tools.google.gmail.lib.gmail_client import GmailClient
-    import json
 
     client = GmailClient(account=account)
     final_html = _apply_signature(client, body, html) if sign else html
     result = client.reply(message_id=message_id, body=body, html=final_html, cc=cc, attachments=attach)
     print(json.dumps(result, indent=2))
-
 
 @app.command("gmail-send")
 def gmail_send(
@@ -407,13 +380,11 @@ def gmail_send(
 ):
     """Send an email via Gmail."""
     from oto.tools.google.gmail.lib.gmail_client import GmailClient
-    import json
 
     client = GmailClient(account=account)
     final_html = _apply_signature(client, body, html) if sign else html
     result = client.send(to=to, subject=subject, body=body, html=final_html, cc=cc, bcc=bcc, attachments=attach)
     print(json.dumps(result, indent=2))
-
 
 @app.command("gmail-archive")
 def gmail_archive(
@@ -423,7 +394,6 @@ def gmail_archive(
 ):
     """Archive Gmail messages (remove from inbox)."""
     from oto.tools.google.gmail.lib.gmail_client import GmailClient
-    import json
 
     client = GmailClient(account=account)
     ids = list(message_ids or [])
@@ -436,7 +406,6 @@ def gmail_archive(
     results = client.archive_messages(ids)
     print(json.dumps({"archived": len(results), "results": results}, indent=2))
 
-
 @app.command("sheets-create")
 def sheets_create(
     title: str = typer.Argument(..., help="Spreadsheet title"),
@@ -445,7 +414,6 @@ def sheets_create(
 ):
     """Create a new Google Sheets spreadsheet, optionally importing a CSV."""
     from oto.tools.google.sheets.lib.sheets_client import SheetsClient
-    import json
 
     client = SheetsClient(account=account)
     result = client.create(title)
@@ -454,7 +422,6 @@ def sheets_create(
         result['imported'] = csv_path
     print(json.dumps(result, indent=2, ensure_ascii=False))
 
-
 @app.command("sheets-info")
 def sheets_info(
     spreadsheet_id: str = typer.Argument(..., help="Google Sheets spreadsheet ID"),
@@ -462,12 +429,10 @@ def sheets_info(
 ):
     """Get spreadsheet metadata (title, sheet names, dimensions)."""
     from oto.tools.google.sheets.lib.sheets_client import SheetsClient
-    import json
 
     client = SheetsClient(account=account)
     meta = client.get_metadata(spreadsheet_id)
     print(json.dumps(meta, indent=2, ensure_ascii=False))
-
 
 @app.command("sheets-read")
 def sheets_read(
@@ -478,7 +443,6 @@ def sheets_read(
 ):
     """Read data from a Google Sheets spreadsheet."""
     from oto.tools.google.sheets.lib.sheets_client import SheetsClient
-    import json
 
     client = SheetsClient(account=account)
 
@@ -487,7 +451,6 @@ def sheets_read(
     else:
         rows = client.read(spreadsheet_id, range)
         print(json.dumps({"rows": len(rows), "data": rows}, indent=2, ensure_ascii=False))
-
 
 @app.command("sheets-write")
 def sheets_write(
@@ -498,12 +461,10 @@ def sheets_write(
 ):
     """Write a CSV file to a Google Sheets spreadsheet (overwrites sheet)."""
     from oto.tools.google.sheets.lib.sheets_client import SheetsClient
-    import json
 
     client = SheetsClient(account=account)
     result = client.write_csv(spreadsheet_id, csv_path, sheet_name=sheet)
     print(json.dumps(result, indent=2, ensure_ascii=False))
-
 
 @app.command("sheets-append")
 def sheets_append(
@@ -515,7 +476,6 @@ def sheets_append(
     """Append rows from a CSV file to a Google Sheets spreadsheet."""
     from oto.tools.google.sheets.lib.sheets_client import SheetsClient
     import csv as csv_mod
-    import json
 
     client = SheetsClient(account=account)
     with open(csv_path, 'r', encoding='utf-8') as f:

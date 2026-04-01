@@ -431,6 +431,20 @@ class DriveClient:
         except Exception as e:
             raise DriveClientError(f"Failed to create folder: {e}")
 
+    def delete_file(self, file_id: str) -> Dict:
+        """Permanently delete a file from Google Drive."""
+        try:
+            self.service.files().delete(
+                fileId=file_id,
+                supportsAllDrives=True
+            ).execute()
+            return {
+                'status': 'success',
+                'file_id': file_id,
+            }
+        except Exception as e:
+            raise DriveClientError(f"Failed to delete file {file_id}: {e}")
+
     @staticmethod
     def _guess_mime_type(file_path: Path) -> str:
         """Guess MIME type from file extension."""
