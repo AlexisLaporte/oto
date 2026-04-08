@@ -2,7 +2,7 @@
 
 CLI toolkit for AI agents — covers the long tail of SaaS APIs that don't have a CLI.
 
-Repo: `AlexisLaporte/oto`. Package: `oto-cli` on PyPI. Command: `oto`.
+Repo: `AlexisLaporte/oto`. Package: `oto-cli` on PyPI (v1.1.0). Command: `oto`.
 
 ## Philosophy
 
@@ -35,10 +35,14 @@ oto/
 │   │   ├── enrichment.py       # kaspr, hunter, lemlist
 │   │   ├── pennylane.py        # accounting
 │   │   ├── anthropic.py        # usage, cost, summary
+│   │   ├── attio.py            # Attio CRM (contacts, companies, deals, tasks)
 │   │   ├── folk.py             # Folk CRM
+│   │   ├── zoho.py             # Zoho CRM
 │   │   ├── company.py          # SIREN lookup multi-source
 │   │   ├── whatsapp.py         # WhatsApp messaging
 │   │   ├── audio.py            # audio recording, transcription
+│   │   ├── gemini.py           # Gemini image generation
+│   │   ├── config.py           # config & secrets management
 │   │   └── skills.py           # Claude Code skills (enable/disable)
 │   └── tools/                  # API clients
 │       ├── google/             # gmail, drive, docs, sheets, slides, calendar, keep
@@ -49,8 +53,9 @@ oto/
 │       ├── serper/             # Google search (web, news)
 │       ├── anthropic/          # Admin API (usage, costs)
 │       ├── pennylane/          # Accounting
+│       ├── attio/              # Attio CRM
 │       ├── kaspr/, hunter/, lemlist/  # Enrichment & outreach
-│       └── folk/, slack/, resend/     # CRM & messaging
+│       └── folk/, zoho/, slack/, resend/  # CRM & messaging
 ├── skills/                     # Claude Code skills
 │   └── oto-*/SKILL.md          # LLM instruction manuals
 └── pyproject.toml              # entry point: oto = "oto.cli:main"

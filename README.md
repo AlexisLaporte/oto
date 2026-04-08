@@ -37,24 +37,29 @@ cd oto && pip install -e ".[all]"
 | Command | What it does | Extra |
 |---------|-------------|-------|
 | `oto google` | Gmail, Drive, Docs, Sheets, Slides, Calendar | `google` |
-| `oto browser` | LinkedIn, Crunchbase, Pappers, Indeed, G2 | `browser` |
+| `oto browser` | LinkedIn, Crunchbase, Pappers, Indeed, G2, Google | `browser` |
 | `oto notion` | Search, pages, databases | — |
 | `oto sirene` | French company data (INSEE SIRENE) | — |
-| `oto search` | Web & news search (Serper/Google) | — |
+| `oto search` | Web & news search (dispatches to Serper or browser) | — |
+| `oto serper` | Direct Serper API (web, news, scrape, suggestions) | — |
 | `oto enrichment` | Contact enrichment (Kaspr, Hunter, Lemlist) | — |
 | `oto pennylane` | Accounting (Pennylane API) | — |
 | `oto anthropic` | API usage & cost tracking | `anthropic` |
 | `oto whatsapp` | Send & read WhatsApp messages | — |
+| `oto attio` | Attio CRM (contacts, companies, deals, tasks) | — |
 | `oto folk` | Folk CRM (contacts, companies, deals) | — |
+| `oto zoho` | Zoho CRM (records, contacts, deals, notes) | — |
 | `oto company` | French company lookup (multi-source) | — |
 | `oto audio` | Audio recording, transcription, summaries | — |
+| `oto gemini` | Image generation (text-to-image, editing) | — |
+| `oto config` | Configuration & secrets management | — |
 
 Connectors without an "Extra" only need `requests` (included in base install).
 
 ## Quick start
 
 ```bash
-# Configure secrets
+# Configure secrets (file-based, default)
 mkdir -p ~/.otomata
 cat > ~/.otomata/secrets.env << 'EOF'
 SERPER_API_KEY=xxx
@@ -62,11 +67,14 @@ NOTION_API_KEY=secret_xxx
 SIRENE_API_KEY=xxx
 EOF
 
-# Check config
+# Or use Scaleway Secret Manager
+oto config provider secrets scaleway
+
+# Check config & secrets status
 oto config
 
-# Search the web
-oto search web "AI agents 2026"
+# Search the web (backend depends on config: serper or browser)
+oto search web -q "AI agents 2026"
 
 # Google OAuth setup (per account)
 oto google auth myaccount
@@ -115,10 +123,10 @@ See [docs/create-connector.md](docs/create-connector.md) for the full guide.
 - **Browser** — automate a real browser for sites without an API. Async, require `oto-cli[browser]`. (linkedin, crunchbase, pappers, indeed, g2)
 - **SDK** — use an official client library. Currently Google Workspace via `google-api-python-client` + OAuth2. Require `oto-cli[google]`.
 
-**Secrets** — 3-tier resolution (first found wins):
-1. Environment variables
-2. `.otomata/secrets.env` in project directory (walks up 4 levels)
-3. `~/.otomata/secrets.env` (user-level)
+**Secrets** — provider-based resolution, configured via `oto config provider secrets <file|scaleway>`:
+1. Environment variables (always, highest priority)
+2. Configured provider: **file** (`.otomata/secrets.env` project → user) or **Scaleway** Secret Manager
+3. Default value
 
 **Output contract** — every command prints JSON to stdout, errors to stderr. Composable with `jq`, pipes, scripts.
 
