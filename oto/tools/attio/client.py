@@ -152,6 +152,14 @@ class AttioTasks:
     def __init__(self, client: "AttioClient"):
         self.client = client
 
+    def _get_default_assignee(self) -> str:
+        """Get first workspace member ID as default assignee."""
+        data = self.client._request("GET", "workspace_members")
+        members = data.get("data", [])
+        if not members:
+            raise Exception("No workspace members found")
+        return members[0]["id"]["workspace_member_id"]
+
     def create(
         self,
         content: str,
@@ -164,27 +172,35 @@ class AttioTasks:
         Create a task.
 
         Args:
-            content: Task description
-            deadline: ISO date deadline
-            assignee_id: User ID to assign
-            linked_object: Object type to link
+            content: Task description (max 2000 chars)
+            deadline: ISO date or YYYY-MM-DD deadline
+            assignee_id: Workspace member ID (defaults to first member)
+            linked_object: Object type to link (companies, people)
             linked_record_id: Record ID to link
 
         Returns:
             Created task
         """
-        data = {"data": {"content": content}}
+        if not assignee_id:
+            assignee_id = self._get_default_assignee()
+
+        task_data = {
+            "content": content,
+            "format": "plaintext",
+            "is_completed": False,
+            "assignees": [{"referenced_actor_type": "workspace-member", "referenced_actor_id": assignee_id}],
+        }
         if deadline:
-            data["data"]["deadline"] = deadline
-        if assignee_id:
-            data["data"]["assignee_id"] = assignee_id
+            if len(deadline) == 10:  # YYYY-MM-DD
+                deadline = f"{deadline}T00:00:00.000Z"
+            task_data["deadline_at"] = deadline
         if linked_object and linked_record_id:
-            data["data"]["linked_records"] = [{
+            task_data["linked_records"] = [{
                 "target_object": linked_object,
                 "target_record_id": linked_record_id,
             }]
 
-        return self.client._request("POST", "tasks", json=data)
+        return self.client._request("POST", "tasks", json={"data": task_data})
 
     def list(self, completed: bool = None) -> List[Dict[str, Any]]:
         """List tasks."""

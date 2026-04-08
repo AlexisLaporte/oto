@@ -6,6 +6,10 @@ from typing import Optional
 
 app = typer.Typer(help="Attio CRM — contacts, companies, deals, lists")
 
+# Task subcommands
+task_app = typer.Typer(help="Tasks (reminders, follow-ups)")
+app.add_typer(task_app, name="task")
+
 
 def _out(data):
     print(json.dumps(data, indent=2, ensure_ascii=False))
@@ -245,3 +249,45 @@ def add_note(
     """Add a note to a person or company."""
     result = _client().notes.create(object_type, record_id, title, content)
     _out(result)
+
+
+# --- Tasks ---
+
+@task_app.command("list")
+def task_list(
+    all: bool = typer.Option(False, "--all", "-a", help="Include completed tasks"),
+):
+    """List tasks."""
+    c = _client()
+    data = c.tasks.list(completed=None if all else False)
+    tasks = data.get("data", [])
+    result = []
+    for t in tasks:
+        result.append({
+            "id": t["id"]["task_id"],
+            "content": t.get("content_plaintext", ""),
+            "deadline": t.get("deadline_at"),
+            "completed": t.get("is_completed", False),
+            "assignees": [a.get("referenced_actor_id") for a in t.get("assignees", [])],
+        })
+    _out({"count": len(result), "tasks": result})
+
+
+@task_app.command("add")
+def task_add(
+    content: str = typer.Argument(..., help="Task description"),
+    deadline: Optional[str] = typer.Option(None, "--deadline", "-d", help="Deadline (YYYY-MM-DD)"),
+    record: Optional[str] = typer.Option(None, "--record", "-r", help="Linked record ID"),
+    record_type: Optional[str] = typer.Option("companies", "--type", "-t", help="Linked record type (companies, people)"),
+):
+    """Create a task."""
+    c = _client()
+    result = c.tasks.create(
+        content=content,
+        deadline=deadline,
+        linked_object=record_type if record else None,
+        linked_record_id=record,
+    )
+    task = result.get("data", {})
+    print(f"Created task: {task.get('id', {}).get('task_id', '')}")
+    _out(task)

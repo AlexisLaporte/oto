@@ -1,10 +1,10 @@
-"""LinkedIn scraping mixins: profile, company, posts."""
+"""LinkedIn scraping mixins: profile, company, posts, messages."""
 
 import random
 import re
-from typing import List
+from typing import List, Optional
 
-from ._js import JS_PROFILE, JS_COMPANY_ABOUT, JS_POSTS
+from ._js import JS_PROFILE, JS_COMPANY_ABOUT, JS_POSTS, JS_CONVERSATIONS, JS_THREAD_MESSAGES
 
 
 class ProfileMixin:
@@ -91,6 +91,63 @@ class ProfileMixin:
                 last_count = count
 
         return await self.page.evaluate(JS_POSTS, max_posts)
+
+
+class MessagesMixin:
+    """Scrape LinkedIn messaging conversations."""
+
+    async def scrape_conversations(self, search: Optional[str] = None, limit: int = 20) -> List[dict]:
+        """
+        List recent LinkedIn conversations.
+
+        Args:
+            search: Optional name to filter conversations
+            limit: Max conversations to return
+
+        Returns:
+            List of {name, preview, time, threadId}
+        """
+        await self.goto("https://www.linkedin.com/messaging/")
+        await self.wait(4)
+
+        if search:
+            search_input = await self.query_selector('input[class*="msg-search"]')
+            if not search_input:
+                search_input = await self.query_selector('input[placeholder*="cherch"], input[placeholder*="earch"]')
+            if search_input:
+                await search_input.click()
+                await self.wait(1)
+                await search_input.fill(search)
+                await self.wait(3)
+
+        convos = await self.page.evaluate(JS_CONVERSATIONS)
+        return convos[:limit]
+
+    async def scrape_thread(self, thread_id: str) -> dict:
+        """
+        Read messages from a specific conversation thread.
+
+        Args:
+            thread_id: Thread ID from conversation list
+
+        Returns:
+            {threadId, messages: [{sender, time, body}]}
+        """
+        await self.goto(f"https://www.linkedin.com/messaging/thread/{thread_id}/")
+        await self.wait(4)
+
+        # Scroll up to load older messages
+        msg_list = await self.query_selector('.msg-s-message-list-content, [class*="message-list"]')
+        if msg_list:
+            for _ in range(3):
+                await self.page.evaluate(
+                    'el => el.scrollTop = 0',
+                    msg_list,
+                )
+                await self.wait(1.5)
+
+        messages = await self.page.evaluate(JS_THREAD_MESSAGES)
+        return {"threadId": thread_id, "messages": messages}
 
 
 class CompanyMixin:

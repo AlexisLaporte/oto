@@ -1,9 +1,9 @@
-"""Browser automation commands (LinkedIn, Crunchbase, Pappers, Indeed, G2)."""
+"""Browser automation commands (LinkedIn, Crunchbase, Pappers, Indeed, G2, Google)."""
 
 import typer
 from typing import Optional
 
-app = typer.Typer(help="Browser automation tools (LinkedIn, Crunchbase, Indeed, etc.)")
+app = typer.Typer(help="Browser automation tools (LinkedIn, Crunchbase, Indeed, Google, etc.)")
 
 # LinkedIn subcommands
 linkedin_app = typer.Typer(help="LinkedIn scraping (profile, company, employees, search)")
@@ -177,6 +177,53 @@ def linkedin_posts(
     async def run():
         async with _linkedin_client(cookie=cookie, cdp_url=cdp_url, profile=profile, channel=channel, headless=headless, rate_limit=not no_rate_limit) as client:
             return await client.scrape_profile_posts(url, max_posts=limit)
+
+    result = asyncio.run(run())
+    print(json.dumps(result, indent=2, ensure_ascii=False))
+
+
+@linkedin_app.command("messages")
+def linkedin_messages(
+    search: Optional[str] = typer.Argument(None, help="Filter by contact name"),
+    limit: int = typer.Option(20, "--limit", "-n", help="Max conversations"),
+    thread: Optional[str] = typer.Option(None, "--thread", "-t", help="Read a specific thread ID"),
+    cookie: Optional[str] = typer.Option(None, envvar="LINKEDIN_COOKIE", help="li_at cookie"),
+    cdp_url: Optional[str] = typer.Option(None, "--cdp-url", help="Connect to existing Chrome via CDP"),
+    profile: Optional[str] = typer.Option(None, help="Chrome profile directory path"),
+    channel: Optional[str] = typer.Option(None, envvar="BROWSER_CHANNEL", help="Chrome channel"),
+    no_rate_limit: bool = typer.Option(False, "--no-rate-limit", help="Disable rate limiting"),
+    headless: bool = typer.Option(True, help="Run headless"),
+):
+    """Read LinkedIn messages (conversations list or specific thread)."""
+    import asyncio
+    import json
+
+    async def run():
+        async with _linkedin_client(cookie=cookie, cdp_url=cdp_url, profile=profile, channel=channel, headless=headless, rate_limit=not no_rate_limit) as client:
+            if thread:
+                return await client.scrape_thread(thread)
+            return await client.scrape_conversations(search=search, limit=limit)
+
+    result = asyncio.run(run())
+    print(json.dumps(result, indent=2, ensure_ascii=False))
+
+
+@app.command("google")
+def google_search(
+    query: str = typer.Option(..., "--query", "-q", help="Search query"),
+    num: int = typer.Option(10, "--num", "-n", help="Number of results"),
+    profile: Optional[str] = typer.Option(None, help="Chrome profile directory path"),
+    channel: Optional[str] = typer.Option(None, envvar="BROWSER_CHANNEL", help="Chrome channel"),
+    headless: bool = typer.Option(True, help="Run headless"),
+):
+    """Search Google via browser automation."""
+    import asyncio
+    import json
+    from oto.tools.browser import GoogleSearchClient
+
+    async def run():
+        async with GoogleSearchClient(headless=headless, profile_path=profile, channel=channel) as client:
+            return await client.search(query, num=num)
 
     result = asyncio.run(run())
     print(json.dumps(result, indent=2, ensure_ascii=False))

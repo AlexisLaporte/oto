@@ -5,6 +5,40 @@ These JS snippets use stable anchors: componentkey attrs, data-urn,
 computed styles, and semantic HTML structure.
 """
 
+# Messaging: extract conversation list from /messaging/
+JS_CONVERSATIONS = """() => {
+    const convos = [];
+    const items = document.querySelectorAll('li.msg-conversation-listitem');
+    for (const item of items) {
+        const nameEl = item.querySelector('h3');
+        const name = nameEl ? nameEl.textContent.trim() : '';
+        const previewEl = item.querySelector('p.msg-conversation-card__message-snippet-body, p[class*="message-snippet"]');
+        const preview = previewEl ? previewEl.textContent.trim() : '';
+        const timeEl = item.querySelector('time');
+        const time = timeEl ? timeEl.textContent.trim() : '';
+        const link = item.querySelector('a[href*="/messaging/thread/"]');
+        const threadId = link ? link.href.match(/thread\\/([^/]+)/)?.[1] || '' : '';
+        if (name) convos.push({name, preview, time, threadId});
+    }
+    return convos;
+}"""
+
+# Messaging: extract messages from an open thread
+JS_THREAD_MESSAGES = """() => {
+    const msgs = [];
+    const items = document.querySelectorAll('li.msg-s-message-list__event');
+    for (const item of items) {
+        const senderEl = item.querySelector('.msg-s-message-group__name, [class*="message-group__name"]');
+        const sender = senderEl ? senderEl.textContent.trim() : '';
+        const timeEl = item.querySelector('time');
+        const time = timeEl ? timeEl.textContent.trim() : '';
+        const bodyEl = item.querySelector('.msg-s-event-listitem__body, [class*="event-listitem__body"]');
+        const body = bodyEl ? bodyEl.textContent.trim() : '';
+        if (body) msgs.push({sender, time, body});
+    }
+    return msgs;
+}"""
+
 # Profile: extract name, headline, location from Topcard + About sections
 JS_PROFILE = """() => {
     const r = {};

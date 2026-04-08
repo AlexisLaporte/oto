@@ -431,6 +431,24 @@ class DriveClient:
         except Exception as e:
             raise DriveClientError(f"Failed to create folder: {e}")
 
+    def rename_file(self, file_id: str, new_name: str) -> Dict:
+        """Rename a file in Google Drive."""
+        try:
+            updated = self.service.files().update(
+                fileId=file_id,
+                body={'name': new_name},
+                fields='id,name,webViewLink',
+                supportsAllDrives=True
+            ).execute()
+            return {
+                'status': 'success',
+                'file_id': updated['id'],
+                'name': updated['name'],
+                'web_link': updated.get('webViewLink')
+            }
+        except Exception as e:
+            raise DriveClientError(f"Failed to rename file {file_id}: {e}")
+
     def delete_file(self, file_id: str) -> Dict:
         """Permanently delete a file from Google Drive."""
         try:

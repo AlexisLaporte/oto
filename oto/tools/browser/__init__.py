@@ -15,6 +15,7 @@ from .crunchbase import CrunchbaseClient
 from .pappers import PappersClient
 from .g2 import G2Client
 from .indeed import IndeedClient
+from .google import GoogleSearchClient
 
 __all__ = [
     "BrowserClient",
@@ -23,4 +24,5 @@ __all__ = [
     "PappersClient",
     "G2Client",
     "IndeedClient",
+    "GoogleSearchClient",
 ]

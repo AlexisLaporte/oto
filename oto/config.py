@@ -1,9 +1,9 @@
 """Configuration loader for otomata tools.
 
 Secret resolution order:
-1. Environment variable
-2. Project secrets: .otomata/secrets.env in CWD or parent directories
-3. User secrets: ~/.otomata/secrets.env
+1. Environment variable (always)
+2. Configured provider (file or scaleway)
+3. Default value
 """
 
 import os
@@ -13,6 +13,7 @@ from typing import Optional, Dict, Any
 
 # Cache for parsed secrets files
 _secrets_cache: Dict[Path, Dict[str, str]] = {}
+_oto_config_cache: Optional[Dict[str, Any]] = None
 
 
 def _parse_env_file(path: Path) -> Dict[str, str]:
@@ -62,18 +63,50 @@ def _get_user_secrets() -> Path:
     return Path.home() / ".otomata" / "secrets.env"
 
 
+def _get_oto_config() -> Dict[str, Any]:
+    """Read ~/.otomata/config.yaml. Cached."""
+    global _oto_config_cache
+    if _oto_config_cache is not None:
+        return _oto_config_cache
+
+    config_file = Path.home() / ".otomata" / "config.yaml"
+    if config_file.exists():
+        import yaml
+        with open(config_file) as f:
+            _oto_config_cache = yaml.safe_load(f) or {}
+    else:
+        _oto_config_cache = {}
+    return _oto_config_cache
+
+
+def get_provider() -> str:
+    """Return configured secret provider ('file' or 'scaleway')."""
+    return _get_oto_config().get("secret_provider", "file")
+
+
+def write_oto_config(config: Dict[str, Any]) -> None:
+    """Write ~/.otomata/config.yaml."""
+    global _oto_config_cache
+    import yaml
+    config_file = get_config_dir() / "config.yaml"
+    with open(config_file, "w") as f:
+        yaml.dump(config, f, default_flow_style=False)
+    _oto_config_cache = config
+
+
+def get_search_provider() -> str:
+    """Return configured search provider ('serper' or 'browser')."""
+    return _get_oto_config().get("search_provider", "serper")
+
+
 def get_secret(name: str, default: Optional[str] = None) -> Optional[str]:
     """
-    Get a secret value from config files (CLI mode).
+    Get a secret value.
 
-    Search order:
-    1. Environment variable (set by worker, systemd, etc.)
-    2. Project secrets: .otomata/secrets.env in CWD or parents
-    3. User secrets: ~/.otomata/secrets.env
-    4. Default value
-
-    Note: For library usage, pass secrets explicitly via constructor
-    (e.g., SireneClient(api_key='...')). This function is for CLI mode only.
+    Resolution order:
+    1. Environment variable (always, highest priority)
+    2. Configured provider (file or scaleway)
+    3. Default value
 
     Args:
         name: Secret name (e.g., 'GROQ_API_KEY', 'SIRENE_API_KEY')
@@ -82,23 +115,29 @@ def get_secret(name: str, default: Optional[str] = None) -> Optional[str]:
     Returns:
         Secret value or default
     """
-    # 1. Environment variable (highest priority — set by worker, systemd, etc.)
+    # 1. Environment variable (always)
     env_val = os.environ.get(name)
     if env_val:
         return env_val
 
-    # 2. Project secrets
-    project_secrets = _find_project_secrets()
-    if project_secrets:
-        secrets = _parse_env_file(project_secrets)
+    # 2. Configured provider
+    provider = get_provider()
+    if provider == "scaleway":
+        from oto.scaleway_secrets import fetch_secrets
+        secrets = fetch_secrets()
         if name in secrets:
             return secrets[name]
-
-    # 3. User secrets
-    user_secrets = _get_user_secrets()
-    secrets = _parse_env_file(user_secrets)
-    if name in secrets:
-        return secrets[name]
+    else:
+        # File provider: project secrets then user secrets
+        project_secrets = _find_project_secrets()
+        if project_secrets:
+            secrets = _parse_env_file(project_secrets)
+            if name in secrets:
+                return secrets[name]
+        user_secrets = _get_user_secrets()
+        secrets = _parse_env_file(user_secrets)
+        if name in secrets:
+            return secrets[name]
 
     return default
 

@@ -7,7 +7,7 @@ from typing import Optional
 
 app = typer.Typer(help="Google Workspace tools (Drive, Docs, Sheets, Slides, Gmail, Calendar)")
 
-drive_app = typer.Typer(help="Google Drive tools (list, download, upload, mkdir, move, delete)")
+drive_app = typer.Typer(help="Google Drive tools (list, download, upload, mkdir, move, rename, delete)")
 docs_app = typer.Typer(help="Google Docs tools (create, write, headings, section)")
 calendar_app = typer.Typer(help="Google Calendar tools (list, today, upcoming, search, get)")
 gmail_app = typer.Typer(help="Gmail tools (search, list, get, send, draft, reply, archive, attachments)")
@@ -94,6 +94,19 @@ def drive_move(
     client = DriveClient(account=account)
     result = client.move_file(file_id, folder_id)
     print(json.dumps(result, indent=2))
+
+@drive_app.command("rename")
+def drive_rename(
+    file_id: str = typer.Argument(..., help="Google Drive file ID to rename"),
+    name: str = typer.Argument(..., help="New name for the file"),
+    account: Optional[str] = typer.Option(None, "--account", "-a", help="Google account name"),
+):
+    """Rename a file in Google Drive."""
+    from oto.tools.google.drive.lib.drive_client import DriveClient
+
+    client = DriveClient(account=account)
+    result = client.rename_file(file_id, name)
+    print(json.dumps(result, indent=2, ensure_ascii=False))
 
 @drive_app.command("delete")
 def drive_delete(

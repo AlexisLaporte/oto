@@ -28,9 +28,10 @@ oto/
 │   ├── commands/               # 1 file = 1 sub-command (auto-discovered)
 │   │   ├── google.py           # drive, docs, sheets, slides, gmail, calendar, auth
 │   │   ├── notion.py           # search, page, database
-│   │   ├── browser.py          # linkedin, crunchbase, pappers, indeed, g2
+│   │   ├── browser.py          # linkedin, crunchbase, pappers, indeed, g2, google
 │   │   ├── sirene.py           # SIRENE API (search, get, stock)
-│   │   ├── search.py           # web, news (serper)
+│   │   ├── search.py           # facade: dispatches to serper or browser via config
+│   │   ├── serper.py           # direct Serper API (web, news, scrape, suggestions)
 │   │   ├── enrichment.py       # kaspr, hunter, lemlist
 │   │   ├── pennylane.py        # accounting
 │   │   ├── anthropic.py        # usage, cost, summary
@@ -42,7 +43,7 @@ oto/
 │   └── tools/                  # API clients
 │       ├── google/             # gmail, drive, docs, sheets, slides, calendar, keep
 │       ├── notion/             # pages, databases, search
-│       ├── browser/            # linkedin, crunchbase, pappers, indeed, g2
+│       ├── browser/            # linkedin, crunchbase, pappers, indeed, g2, google
 │       ├── whatsapp/           # Node.js bridge (whatsapp-web.js)
 │       ├── sirene/             # INSEE SIRENE API
 │       ├── serper/             # Google search (web, news)
@@ -93,12 +94,31 @@ Key rules:
 - Always `print(json.dumps(..., indent=2))` for output
 - Missing secrets raise `ValueError`, caught by `main()` → clean stderr message
 
-## Secrets
+## Secrets & Config
 
-3-tier resolution (first found wins):
-1. Environment variables
-2. `.otomata/secrets.env` in project directory (walks up 4 levels)
-3. `~/.otomata/secrets.env` (user-level)
+Provider-based resolution, configured via `oto config provider secrets <file|scaleway>`:
+1. Environment variables (always, highest priority)
+2. Configured provider: **file** (`.otomata/secrets.env` project → user) or **Scaleway** Secret Manager
+3. Default value
+
+```bash
+oto config                        # show providers + secrets status
+oto config provider secrets file  # switch to file-based secrets
+oto config provider search serper # switch search to serper (default) or browser
+oto config secrets-push           # upload local secrets.env → Scaleway
+oto config secrets-pull           # download Scaleway → local secrets.env
+```
+
+## Search
+
+Facade `oto search` dispatches to backend based on `search_provider` config:
+
+| Command | Backend | Notes |
+|---------|---------|-------|
+| `oto search web -q "..."` | config-based | serper (default) or browser |
+| `oto search news -q "..."` | serper only | no browser equivalent |
+| `oto serper web/news/scrape/suggestions` | Serper API | direct access |
+| `oto browser google -q "..."` | Chrome | needs `--profile` to avoid bot detection |
 
 ## Google OAuth
 
