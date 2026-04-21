@@ -1,4 +1,4 @@
-"""Browser automation commands (LinkedIn, Crunchbase, Pappers, Indeed, G2, Google)."""
+"""Browser automation commands (LinkedIn, Crunchbase, Pappers, Indeed, G2, Google, SNCF)."""
 
 import typer
 from typing import Optional
@@ -300,6 +300,53 @@ def g2_reviews(
     async def run():
         async with G2Client(headless=headless) as client:
             return await client.get_product_reviews(url, max_reviews=limit)
+
+    result = asyncio.run(run())
+    print(json.dumps(result, indent=2, ensure_ascii=False))
+
+
+# ── SNCF Connect ──────────────────────────────────────────────────────────
+
+sncf_app = typer.Typer(help="SNCF Connect (trips, justificatifs)")
+app.add_typer(sncf_app, name="sncf")
+
+
+def _sncf_client(**kwargs):
+    from oto.tools.browser import SNCFClient
+    return SNCFClient(**kwargs)
+
+
+@sncf_app.command("trips")
+def sncf_trips(
+    past: bool = typer.Option(True, help="Show past trips (default) vs upcoming"),
+    profile: Optional[str] = typer.Option(None, help="Chrome profile directory path"),
+    headless: bool = typer.Option(True, help="Run headless"),
+):
+    """List SNCF trips."""
+    import asyncio
+    import json
+
+    async def run():
+        async with _sncf_client(profile_path=profile, headless=headless) as client:
+            return await client.list_trips(past=past)
+
+    result = asyncio.run(run())
+    print(json.dumps(result, indent=2, ensure_ascii=False))
+
+
+@sncf_app.command("justificatifs")
+def sncf_justificatifs(
+    email: str = typer.Option("alexis@otomata.tech", "--email", "-e", help="Email to receive justificatifs"),
+    profile: Optional[str] = typer.Option(None, help="Chrome profile directory path"),
+    headless: bool = typer.Option(True, help="Run headless"),
+):
+    """Request all past trip justificatifs by email."""
+    import asyncio
+    import json
+
+    async def run():
+        async with _sncf_client(profile_path=profile, headless=headless) as client:
+            return await client.request_justificatifs(email)
 
     result = asyncio.run(run())
     print(json.dumps(result, indent=2, ensure_ascii=False))

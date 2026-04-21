@@ -16,6 +16,7 @@ from .pappers import PappersClient
 from .g2 import G2Client
 from .indeed import IndeedClient
 from .google import GoogleSearchClient
+from .sncf import SNCFClient
 
 __all__ = [
     "BrowserClient",
@@ -25,4 +26,5 @@ __all__ = [
     "G2Client",
     "IndeedClient",
     "GoogleSearchClient",
+    "SNCFClient",
 ]
