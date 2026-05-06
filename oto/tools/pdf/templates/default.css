@@ -1,0 +1,114 @@
+/*
+  Default PDF template — Oto
+  Editorial minimalist style: A4, sober palette, page numbering.
+  Set the document title via YAML frontmatter (title: + subtitle:),
+  not via --metadata title (avoids title duplication).
+*/
+
+@page {
+  size: A4;
+  margin: 18mm 16mm 18mm 16mm;
+  @bottom-right {
+    content: counter(page) " / " counter(pages);
+    font-family: "Helvetica", "Arial", sans-serif;
+    font-size: 9pt;
+    color: #888;
+  }
+  @bottom-left {
+    font-family: "Helvetica", "Arial", sans-serif;
+    font-size: 9pt;
+    color: #888;
+  }
+}
+
+body {
+  font-family: "Helvetica", "Arial", sans-serif;
+  font-size: 10pt;
+  line-height: 1.45;
+  color: #1a1a1a;
+  max-width: 100%;
+}
+
+header#title-block-header { margin-bottom: 8px; }
+
+h1.title {
+  font-size: 20pt;
+  color: #006a4e;
+  border-bottom: 2px solid #006a4e;
+  padding-bottom: 6px;
+  margin: 0 0 4px 0;
+  font-weight: 700;
+}
+
+p.subtitle {
+  font-size: 10pt;
+  color: #666;
+  font-style: normal;
+  margin: 0 0 10px 0;
+}
+
+h1 {
+  font-size: 18pt;
+  color: #006a4e;
+  border-bottom: 2px solid #006a4e;
+  padding-bottom: 6px;
+  margin-top: 0;
+  margin-bottom: 4px;
+}
+
+h2 {
+  font-size: 12.5pt;
+  color: #006a4e;
+  margin-top: 14px;
+  margin-bottom: 6px;
+}
+
+p { margin: 4px 0 8px 0; }
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 6px 0 10px 0;
+  font-size: 9.5pt;
+}
+
+th {
+  background: #f1f5f3;
+  text-align: left;
+  padding: 6px 8px;
+  border-bottom: 1.5px solid #006a4e;
+  font-weight: 600;
+  color: #1a1a1a;
+}
+
+td {
+  padding: 6px 8px;
+  border-bottom: 1px solid #e2e2e2;
+  vertical-align: top;
+}
+
+td:first-child { font-weight: 600; width: 22%; }
+
+ol, ul { margin: 4px 0 8px 0; padding-left: 20px; }
+li { margin-bottom: 3px; }
+
+strong { color: #1a1a1a; }
+em { color: #555; }
+
+code {
+  font-family: "Menlo", "Consolas", monospace;
+  font-size: 9pt;
+  background: #f4f4f4;
+  padding: 1px 4px;
+  border-radius: 3px;
+}
+
+pre {
+  background: #f4f4f4;
+  padding: 8px 10px;
+  border-radius: 4px;
+  font-size: 9pt;
+  overflow-x: auto;
+}
+
+.page-break { break-after: page; }
