@@ -38,10 +38,12 @@ oto/
 │   │   ├── attio.py            # Attio CRM (contacts, companies, deals, tasks)
 │   │   ├── folk.py             # Folk CRM
 │   │   ├── zoho.py             # Zoho CRM
+│   │   ├── zohodesk.py         # Zoho Desk (tickets/support)
 │   │   ├── company.py          # SIREN lookup multi-source
 │   │   ├── whatsapp.py         # WhatsApp messaging
 │   │   ├── audio.py            # audio recording, transcription
 │   │   ├── gemini.py           # Gemini image generation
+│   │   ├── pdf.py              # markdown → PDF via pandoc + weasyprint (bundled template)
 │   │   ├── config.py           # config & secrets management
 │   │   └── skills.py           # Claude Code skills (enable/disable)
 │   └── tools/                  # API clients
@@ -55,6 +57,8 @@ oto/
 │       ├── pennylane/          # Accounting
 │       ├── attio/              # Attio CRM
 │       ├── kaspr/, hunter/, lemlist/  # Enrichment & outreach
+│       ├── zohodesk/           # Zoho Desk (tickets/support)
+│       ├── pdf/                # pandoc+weasyprint wrapper, bundled CSS template (sober editorial)
 │       └── folk/, zoho/, slack/, resend/  # CRM & messaging
 ├── skills/                     # Claude Code skills
 │   └── oto-*/SKILL.md          # LLM instruction manuals
