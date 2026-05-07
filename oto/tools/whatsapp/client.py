@@ -70,6 +70,46 @@ class WhatsAppClient:
     def auth(self) -> dict:
         return self._run("auth", interactive=True)
 
+    def auth_stream(self):
+        """Run pairing in NDJSON mode and yield events as they come.
+
+        Yields dicts of the form `{"type": "qr", "value": "..."}` (raw QR
+        string from Baileys, suitable for canvas rendering) and a final
+        `{"type": "result", "data": {...}}` or `{"type": "error", ...}`.
+
+        The subprocess inherits a 120s timeout from Baileys (5 attempts of
+        ~120s each on the Node side). Caller may break early; closing the
+        generator terminates the subprocess.
+        """
+        cmd = [
+            "node", str(SCRIPT), "auth",
+            "--auth-dir", self.auth_dir,
+            "--json-events",
+        ]
+        proc = subprocess.Popen(
+            cmd,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.DEVNULL,
+            text=True,
+            bufsize=1,  # line-buffered
+        )
+        try:
+            for line in proc.stdout:
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    yield json.loads(line)
+                except json.JSONDecodeError:
+                    continue
+        finally:
+            if proc.poll() is None:
+                proc.terminate()
+                try:
+                    proc.wait(timeout=2)
+                except subprocess.TimeoutExpired:
+                    proc.kill()
+
     def send(self, to: str, message: str) -> dict:
         return self._run("send", to=to, message=message)
 

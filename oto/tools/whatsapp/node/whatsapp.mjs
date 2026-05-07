@@ -23,9 +23,15 @@ const { values: args } = parseArgs({
     'message-id': { type: 'string' },
     output: { type: 'string' },
     limit: { type: 'string', default: '20' },
+    // When set, emit one JSON object per line on stdout (NDJSON) for events
+    // (e.g. {"type":"qr","value":"..."}) plus a final {"type":"result", ...}.
+    // Without this flag, stdout stays as a single JSON for CLI rétrocompat.
+    'json-events': { type: 'boolean', default: false },
   },
   strict: false,
 })
+
+const JSON_EVENTS = Boolean(args['json-events'])
 
 const authDir = args['auth-dir']
 if (!authDir) {
@@ -37,8 +43,21 @@ const storeFile = authDir + '/store.json'
 // --- Helpers ---
 
 function output(data, exitCode = 0) {
-  process.stdout.write(JSON.stringify(data, null, 2) + '\n')
+  if (JSON_EVENTS) {
+    // Final event = result (or error). Single line, no indent.
+    const payload = exitCode === 0
+      ? { type: 'result', data }
+      : { type: 'error', error: data.error || 'unknown', message: data.message || '', exitCode }
+    process.stdout.write(JSON.stringify(payload) + '\n')
+  } else {
+    process.stdout.write(JSON.stringify(data, null, 2) + '\n')
+  }
   process.exit(exitCode)
+}
+
+function emitEvent(evt) {
+  if (!JSON_EVENTS) return
+  process.stdout.write(JSON.stringify(evt) + '\n')
 }
 
 function toISO(ts) {
@@ -169,9 +188,15 @@ async function connect(showQR) {
       const timeout = setTimeout(() => resolve({ status: 'timeout' }), showQR ? 120000 : 30000)
       sock.ev.on('connection.update', ({ connection, lastDisconnect, qr }) => {
         if (qr && showQR) {
-          qrcode.generate(qr, { small: true }, (code) => {
-            process.stderr.write('\nScan this QR code with WhatsApp:\n' + code + '\n')
-          })
+          // Raw QR for programmatic consumers (extension, server-side render).
+          emitEvent({ type: 'qr', value: qr })
+          // ASCII for terminal CLI users — only when not in JSON mode (else it
+          // pollutes stdout NDJSON would still be readable but ugly).
+          if (!JSON_EVENTS) {
+            qrcode.generate(qr, { small: true }, (code) => {
+              process.stderr.write('\nScan this QR code with WhatsApp:\n' + code + '\n')
+            })
+          }
         }
         if (connection === 'open') {
           clearTimeout(timeout)
