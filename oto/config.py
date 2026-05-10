@@ -2,7 +2,7 @@
 
 Secret resolution order:
 1. Environment variable (always)
-2. Configured provider (file or scaleway)
+2. Configured provider (sops, file, or scaleway)
 3. Default value
 """
 
@@ -80,8 +80,13 @@ def _get_oto_config() -> Dict[str, Any]:
 
 
 def get_provider() -> str:
-    """Return configured secret provider ('file' or 'scaleway')."""
-    return _get_oto_config().get("secret_provider", "file")
+    """Return configured secret provider ('sops', 'file', or 'scaleway').
+
+    `sops` is the new default — secrets decrypted on demand from a SOPS
+    YAML file (see `oto.sops_secrets`). `file` and `scaleway` are kept for
+    backwards compat and migration.
+    """
+    return _get_oto_config().get("secret_provider", "sops")
 
 
 def write_oto_config(config: Dict[str, Any]) -> None:
@@ -122,7 +127,13 @@ def get_secret(name: str, default: Optional[str] = None) -> Optional[str]:
 
     # 2. Configured provider
     provider = get_provider()
-    if provider == "scaleway":
+    if provider == "sops":
+        from oto.sops_secrets import fetch_secrets as _sops_fetch
+        sops_file = _get_oto_config().get("sops_file")
+        secrets = _sops_fetch(sops_file)
+        if name in secrets:
+            return secrets[name]
+    elif provider == "scaleway":
         from oto.scaleway_secrets import fetch_secrets
         secrets = fetch_secrets()
         if name in secrets:
@@ -179,8 +190,8 @@ def require_secret(name: str) -> str:
         raise ValueError(
             f"Required secret '{name}' not found. Set it via:\n"
             f"  - Environment variable: export {name}='...'\n"
-            f"  - Project file: .otomata/secrets.env\n"
-            f"  - User file: ~/.otomata/secrets.env"
+            f"  - SOPS file (default provider): `sops ~/.otomata/secrets/secrets.yaml` then add the key\n"
+            f"  - Or fall back to file/scaleway providers in ~/.otomata/config.yaml"
         )
     return value
 
