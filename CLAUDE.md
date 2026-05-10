@@ -29,6 +29,7 @@ oto/
 │   │   ├── google.py           # drive, docs, sheets, slides, gmail, calendar, auth
 │   │   ├── notion.py           # search, page, database
 │   │   ├── browser.py          # linkedin, crunchbase, pappers, indeed, g2, google
+│   │   ├── reddit.py           # Reddit JSON API (subreddit, search, post)
 │   │   ├── sirene.py           # SIRENE API (search, get, stock)
 │   │   ├── search.py           # facade: dispatches to serper or browser via config
 │   │   ├── serper.py           # direct Serper API (web, news, scrape, suggestions)
@@ -50,6 +51,7 @@ oto/
 │       ├── google/             # gmail, drive, docs, sheets, slides, calendar, keep
 │       ├── notion/             # pages, databases, search
 │       ├── browser/            # linkedin, crunchbase, pappers, indeed, g2, google
+│       ├── reddit/              # Reddit JSON API (no auth)
 │       ├── whatsapp/           # Node.js bridge (whatsapp-web.js)
 │       ├── sirene/             # INSEE SIRENE API
 │       ├── serper/             # Google search (web, news)
