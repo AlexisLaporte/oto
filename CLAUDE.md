@@ -108,14 +108,19 @@ Key rules:
 
 ## Secrets & Config
 
-Provider-based resolution, configured via `oto config provider secrets <file|scaleway>`:
-1. Environment variables (always, highest priority)
-2. Configured provider: **file** (`.otomata/secrets.env` project → user) or **Scaleway** Secret Manager
+Provider-based resolution (`oto config provider secrets <sops|file|scaleway>`) :
+1. Env vars (always, highest priority)
+2. Configured provider:
+   - **sops** (default) — SOPS+age. `sops_dir` (multi-file, walks `*.yaml`
+     recursively, merges flat with warning on duplicate keys) or `sops_file`
+     (mono-file legacy). Default dir: `~/.otomata/secrets/`.
+   - **file** — `.otomata/secrets.env` project → user
+   - **scaleway** — Secret Manager
 3. Default value
 
 ```bash
 oto config                        # show providers + secrets status
-oto config provider secrets file  # switch to file-based secrets
+oto config provider secrets sops  # switch to SOPS (default)
 oto config provider search serper # switch search to serper (default) or browser
 oto config secrets-push           # upload local secrets.env → Scaleway
 oto config secrets-pull           # download Scaleway → local secrets.env
