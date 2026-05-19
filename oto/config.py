@@ -129,8 +129,11 @@ def get_secret(name: str, default: Optional[str] = None) -> Optional[str]:
     provider = get_provider()
     if provider == "sops":
         from oto.sops_secrets import fetch_secrets as _sops_fetch
-        sops_file = _get_oto_config().get("sops_file")
-        secrets = _sops_fetch(sops_file)
+        cfg = _get_oto_config()
+        secrets = _sops_fetch(
+            path=cfg.get("sops_file"),
+            dir_path=cfg.get("sops_dir"),
+        )
         if name in secrets:
             return secrets[name]
     elif provider == "scaleway":

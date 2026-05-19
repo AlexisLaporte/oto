@@ -2,7 +2,7 @@
 
 CLI toolkit for AI agents — covers the long tail of SaaS APIs that don't have a CLI.
 
-Repo: `AlexisLaporte/oto`. Package: `oto-cli` on PyPI (v1.1.0). Command: `oto`.
+Repo: `otomata-tech/oto-cli`. Package: `oto-cli` on PyPI (v1.1.0). Command: `oto`.
 
 ## Philosophy
 
@@ -152,11 +152,12 @@ oto skills disable oto-pennylane   # disable one
 
 ## Release
 
-Package: `oto-cli` on PyPI. PyPI token in `pass otomata/PYPI_TOKEN`.
+Package: `oto-cli` on PyPI. PyPI token in SOPS (`PYPI_TOKEN`).
 
 ```bash
 # Bump version in oto/__init__.py, then:
-hatch build && hatch publish -u __token__ -a "$(pass otomata/PYPI_TOKEN)"
+hatch build && hatch publish -u __token__ \
+  -a "$(sops --decrypt --extract '["PYPI_TOKEN"]' ~/.otomata/secrets/secrets/secrets.yaml)"
 gh release create vX.Y.Z --generate-notes dist/*
 ```
 

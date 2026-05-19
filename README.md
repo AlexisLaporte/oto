@@ -28,8 +28,8 @@ pipx install "oto-cli[google,browser]"
 pipx install "oto-cli[all]"
 
 # Development
-git clone https://github.com/AlexisLaporte/oto.git
-cd oto && pip install -e ".[all]"
+git clone https://github.com/otomata-tech/oto-cli.git
+cd oto-cli && pip install -e ".[all]"
 ```
 
 ## Connectors

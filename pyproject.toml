@@ -49,7 +49,7 @@ all = [
 ]
 
 [project.urls]
-Repository = "https://github.com/AlexisLaporte/oto"
+Repository = "https://github.com/otomata-tech/oto-cli"
 
 [project.scripts]
 oto = "oto.cli:main"
