@@ -10,6 +10,7 @@ import fcntl
 from pathlib import Path
 from datetime import datetime, timedelta
 from typing import Optional, Tuple
+from zoneinfo import ZoneInfo
 
 
 class RateLimiter:
@@ -33,9 +34,17 @@ class RateLimiter:
     DEFAULT_SCHEDULE = {
         'active_hours': {'start': 0, 'end': 24},
         'active_days': [0, 1, 2, 3, 4, 5, 6],  # All days
+        'timezone': None,  # IANA tz name; None = system local time
         'randomize_delay': True,
         'skip_probability': 0.0,
     }
+
+    def _now(self) -> datetime:
+        """Current time in the schedule's timezone (or system local if None)."""
+        tz_name = self.schedule.get('timezone')
+        if tz_name:
+            return datetime.now(ZoneInfo(tz_name))
+        return datetime.now()
 
     def __init__(
         self,
@@ -163,8 +172,8 @@ class RateLimiter:
         return cleaned
 
     def _is_active_time(self) -> bool:
-        """Check if current time is within active hours and days."""
-        now = datetime.now()
+        """Check if current time is within active hours and days (in schedule TZ)."""
+        now = self._now()
 
         # Check day
         active_days = self.schedule.get('active_days', [0, 1, 2, 3, 4, 5, 6])
@@ -177,8 +186,8 @@ class RateLimiter:
         return active_hours['start'] <= hour < active_hours['end']
 
     def _seconds_until_active(self) -> int:
-        """Calculate seconds until next active period."""
-        now = datetime.now()
+        """Calculate seconds until next active period (in schedule TZ)."""
+        now = self._now()
         active_hours = self.schedule.get('active_hours', {'start': 0, 'end': 24})
         active_days = self.schedule.get('active_days', [0, 1, 2, 3, 4, 5, 6])
 
@@ -310,13 +319,15 @@ class RateLimiter:
         return 0
 
     def next_active_time(self) -> str:
-        """Return human-readable time when next active period starts."""
+        """Return human-readable time when next active period starts (schedule TZ)."""
         if self._is_active_time():
             return "now"
 
         seconds = self._seconds_until_active()
-        next_time = datetime.now() + timedelta(seconds=seconds)
-        return next_time.strftime("%Y-%m-%d %H:%M")
+        next_time = self._now() + timedelta(seconds=seconds)
+        tz_name = self.schedule.get('timezone')
+        suffix = f" {tz_name}" if tz_name else ""
+        return next_time.strftime("%Y-%m-%d %H:%M") + suffix
 
     def can_make_request_at(self) -> str:
         """Return human-readable time when next request is allowed."""
@@ -409,6 +420,7 @@ class LinkedInRateLimiter(RateLimiter):
         schedule = {
             'active_hours': {'start': 8, 'end': 22},
             'active_days': [0, 1, 2, 3, 4, 5, 6],
+            'timezone': 'Europe/Paris',
             'randomize_delay': True,
             'skip_probability': 0.05,
         }

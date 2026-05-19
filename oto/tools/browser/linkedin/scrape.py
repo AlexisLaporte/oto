@@ -20,7 +20,17 @@ class ProfileMixin:
         await self.check_rate_limit("profile_visit")
 
         await self.goto(url)
-        await self.wait(3)
+        # Attendre le rendu du Topcard plutôt qu'un wait fixe : on retourne
+        # dès que la section est dans le DOM (typiquement <1s sur cold call,
+        # parfois >4s quand LinkedIn dégrade le payload SDUI). Si jamais le
+        # Topcard n'apparaît pas en 15s, on tente quand même l'extraction —
+        # le scraper retournera des données partielles plutôt que de raise.
+        try:
+            await self.page.wait_for_selector(
+                'section[componentkey*="Topcard"]', timeout=15000
+            )
+        except Exception:
+            pass
 
         data = {"url": url}
 
@@ -164,7 +174,12 @@ class CompanyMixin:
 
         about_url = url.rstrip("/") + "/about/"
         await self.goto(about_url)
-        await self.wait(4)
+        # Le dt/dd contient industry/size/founded/etc. C'est l'indicateur le
+        # plus fiable que la page est hydratée (vs h1 qui apparaît au shell).
+        try:
+            await self.page.wait_for_selector("dt", timeout=15000)
+        except Exception:
+            pass
 
         data = {"url": url}
 
